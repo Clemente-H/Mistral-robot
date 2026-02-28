@@ -48,20 +48,37 @@ ROBOT_TOOLS = [
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "wave",
+            "description": "Wave hello — raise the arm and oscillate the wrist as a greeting gesture.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
-SYSTEM_PROMPT = """You are a robotic arm controller for a KUKA iiwa arm in a PyBullet simulation.
+SYSTEM_PROMPT = """You are the controller of a KUKA iiwa robotic arm in a PyBullet simulation.
+You ALWAYS respond by calling one or more tools — never just reply with text unless there is truly nothing physical to do.
 
-Scene coordinates (approximate):
-- Robot base: (0, 0, 0)
+Available actions and when to use them:
+- wave(): greetings, "say hi", "hello", "wave"
+- move_to(x,y,z): move end-effector to a position
+- grab(): close gripper after positioning over an object
+- release(): open gripper to drop object
+- reset(): return to home position, "go home", "reset"
+
+Scene coordinates:
+- Robot base fixed at (0, 0, 0) — it cannot rotate or translate
 - Reachable workspace: x=[0.2, 0.8], y=[-0.5, 0.5], z=[0.0, 0.8]
 - Blue box: around (0.5, 0.1, 0.05)
-- Target/table zone: around (0.6, -0.2, 0.04)
+- Target zone: around (0.6, -0.2, 0.04)
 
-When the user gives a command, use the available tools to execute it step by step.
-To grab an object: first move_to above it (z+0.2), then move_to its position, then grab.
-To place: move_to destination, then release.
-Always end with a brief confirmation of what you did."""
+Grab sequence: move_to(x, y, z+0.2) → move_to(x, y, z) → grab()
+Place sequence: move_to(dest_x, dest_y, z+0.2) → move_to(dest_x, dest_y, z) → release()
+
+If the command is physically impossible (e.g. "turn around" — the base is fixed),
+briefly explain why and suggest what you CAN do instead. Keep responses short."""
 
 
 class RobotPlanner:
@@ -83,6 +100,9 @@ class RobotPlanner:
         elif name == "reset":
             self.sim.reset()
             return "Arm reset to home"
+        elif name == "wave":
+            self.sim.wave()
+            return "Waved hello"
         return f"Unknown tool: {name}"
 
     def run(self, user_command: str, scene_description: str = "") -> str:
@@ -105,13 +125,26 @@ class RobotPlanner:
                 tool_choice="auto",
             )
             msg = response.choices[0].message
-            self.messages.append(msg)
+
+            # Always serialize to dict — never store SDK objects in history
+            assistant_msg = {"role": "assistant", "content": msg.content}
+            if msg.tool_calls:
+                assistant_msg["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in msg.tool_calls
+                ]
+            self.messages.append(assistant_msg)
 
             if not msg.tool_calls:
-                # Final text response
                 return msg.content
 
-            # Execute all tool calls in this turn
             for tc in msg.tool_calls:
                 args = json.loads(tc.function.arguments)
                 result = self._execute_tool(tc.function.name, args)

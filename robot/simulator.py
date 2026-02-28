@@ -17,6 +17,8 @@ class RobotSimulator:
         self.kuka_id = None
         self.objects = {}  # name -> body_id
         self.num_joints = 0
+        self._recording = False
+        self._recorded_frames: list = []
 
     def start(self):
         mode = p.DIRECT if self.headless else p.GUI
@@ -92,9 +94,51 @@ class RobotSimulator:
         self._reset_arm()
         self._step(60)
 
+    def wave(self):
+        """Wave hello — raise arm up and oscillate the wrist joint."""
+        # Raise arm to wave position
+        wave_pose = [0, -math.pi / 6, 0, math.pi / 4, 0, -math.pi / 3, 0]
+        for i, angle in enumerate(wave_pose[:self.num_joints]):
+            p.setJointMotorControl2(
+                self.kuka_id, i,
+                controlMode=p.POSITION_CONTROL,
+                targetPosition=angle,
+                force=500,
+            )
+        self._step(80)
+
+        # Oscillate last joint (wrist) back and forth 3 times
+        wrist_joint = self.num_joints - 1
+        for _ in range(3):
+            for target in [math.pi / 4, -math.pi / 4]:
+                p.setJointMotorControl2(
+                    self.kuka_id, wrist_joint,
+                    controlMode=p.POSITION_CONTROL,
+                    targetPosition=target,
+                    force=300,
+                )
+                self._step(40)
+
+        self._reset_arm()
+        self._step(60)
+
+    def start_recording(self):
+        self._recording = True
+        self._recorded_frames = []
+
+    def stop_recording(self) -> list:
+        self._recording = False
+        frames = self._recorded_frames
+        self._recorded_frames = []
+        return frames
+
     def _step(self, steps: int = 60):
-        for _ in range(steps):
+        for i in range(steps):
             p.stepSimulation()
+            if not self.headless:
+                time.sleep(1.0 / 240.0)
+            if self._recording and i % 6 == 0:  # ~1 frame every 6 steps
+                self._recorded_frames.append(self.get_screenshot())
 
     # ------------------------------------------------------------------
     # Scene state

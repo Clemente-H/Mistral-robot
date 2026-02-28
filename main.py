@@ -53,13 +53,13 @@ def run_loop(text_mode: bool = False, gui: bool = False):
                         break
                     if not command:
                         continue
+                else:
+                    command = listener.listen()
+                    if not command:
+                        continue
             except (KeyboardInterrupt, EOFError):
                 print("\nExiting...")
                 break
-            else:
-                command = listener.listen()
-                if not command:
-                    continue
 
             print(f"\n> Command: {command}")
 
