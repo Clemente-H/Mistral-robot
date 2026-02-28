@@ -116,7 +116,7 @@ class RobotSimulator:
 
         # Oscillate last joint (wrist) back and forth 3 times
         wrist_joint = self.num_joints - 1
-        for _ in range(3):
+        for _ in range(5):
             for target in [math.pi / 4, -math.pi / 4]:
                 p.setJointMotorControl2(
                     self.kuka_id, wrist_joint,

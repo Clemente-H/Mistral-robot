@@ -87,8 +87,8 @@ Available actions and when to use them:
 Scene coordinates:
 - Robot base fixed at (0, 0, 0) — it cannot rotate or translate
 - Reachable workspace: x=[0.2, 0.8], y=[-0.5, 0.5], z=[0.0, 0.8]
-- Blue box: around (0.5, 0.1, 0.05)
-- Target zone: around (0.6, -0.2, 0.04)
+- Blue box (also called "blue cube", "box"): around (0.5, 0.1, 0.05)
+- Red sphere (also called "red ball", "ball", "sphere", "target"): around (0.6, -0.2, 0.04)
 
 Grab sequence: move_to(x, y, z+0.2) → move_to(x, y, z) → grab()
 Place sequence: move_to(dest_x, dest_y, z+0.2) → move_to(dest_x, dest_y, z) → release()
@@ -157,7 +157,7 @@ class RobotPlanner:
                 model="mistral-small-latest",
                 messages=self.messages,
                 tools=ROBOT_TOOLS,
-                tool_choice="auto",
+                tool_choice="any",
             )
             msg = response.choices[0].message
 
