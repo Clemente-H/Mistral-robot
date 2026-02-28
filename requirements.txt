@@ -1,6 +1,8 @@
 # pybullet via conda-forge: micromamba install -c conda-forge pybullet -n mistral-py312
 mistralai
 openai
+fastapi
+uvicorn
 elevenlabs
 gradio
 python-dotenv

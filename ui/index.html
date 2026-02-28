@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RoboVibe — Mistral AI Robot Control</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --border:    #30363d;
+    --text:      #e6edf3;
+    --muted:     #8b949e;
+    --accent:    #f97316;
+    --accent-hov:#ea6a0a;
+    --user-msg:  #1f6feb;
+    --code-bg:   #0d1117;
+    --green:     #22c55e;
+    --red:       #ef4444;
+    --blue:      #3b82f6;
+  }
+
+  html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+
+  /* ── Layout ── */
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 20px; border-bottom: 1px solid var(--border);
+    background: var(--surface); flex-shrink: 0; z-index: 10;
+  }
+  .logo { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.5px; }
+  .badge {
+    background: var(--accent); color: #fff;
+    padding: 2px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 600;
+  }
+  .tagline { color: var(--muted); font-size: 0.82rem; }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  #status-dot.busy { background: var(--accent); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  main { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── 3-D viewer ── */
+  #viewer { flex: 1; position: relative; background: #010409; min-width: 0; }
+  #viewer canvas { display: block; width: 100% !important; height: 100% !important; }
+
+  /* Viewer overlay hints */
+  #viewer-hint {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.55); color: var(--muted); font-size: 0.72rem;
+    padding: 4px 12px; border-radius: 20px; pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: 380px; flex-shrink: 0;
+    display: flex; flex-direction: column;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  /* Chat messages */
+  #chat-messages {
+    flex: 1; overflow-y: auto; padding: 16px;
+    display: flex; flex-direction: column; gap: 10px;
+    scroll-behavior: smooth;
+  }
+  #chat-messages::-webkit-scrollbar { width: 4px; }
+  #chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .msg { padding: 10px 14px; border-radius: 10px; line-height: 1.55; font-size: 0.875rem;
+    max-width: 92%; word-break: break-word; }
+  .msg.user    { background: var(--user-msg); align-self: flex-end; border-bottom-right-radius: 3px; }
+  .msg.bot     { background: var(--bg); border: 1px solid var(--border); align-self: flex-start;
+    border-bottom-left-radius: 3px; }
+  .msg.sys     { color: var(--muted); font-size: 0.76rem; align-self: center;
+    background: none; padding: 2px 0; }
+  .msg.thinking { color: var(--accent); font-size: 0.76rem; align-self: flex-start;
+    background: none; border: none; animation: pulse 1s infinite; }
+
+  /* Macros panel */
+  #macros-bar {
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #macros-toggle {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 9px 16px; cursor: pointer; user-select: none;
+    font-size: 0.8rem; color: var(--muted);
+  }
+  #macros-toggle:hover { background: rgba(255,255,255,0.03); }
+  #macros-panel {
+    display: none; padding: 12px 16px; border-top: 1px solid var(--border);
+    background: var(--code-bg);
+  }
+  #macros-panel input, #macros-panel textarea {
+    width: 100%; background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 0.8rem;
+    outline: none; resize: none;
+  }
+  #macros-panel input:focus, #macros-panel textarea:focus { border-color: var(--accent); }
+  #macros-panel textarea { height: 54px; font-family: monospace; margin: 6px 0; }
+  .macro-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .btn-save { background: var(--accent); color: #fff; border: none; padding: 6px 14px;
+    border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; }
+  .btn-save:hover { background: var(--accent-hov); }
+  #macros-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+  .macro-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 5px 8px; background: var(--surface); border-radius: 6px;
+    font-size: 0.78rem; border: 1px solid var(--border);
+  }
+  .macro-item code { color: var(--muted); font-size: 0.72rem; }
+  .macro-del { background: none; border: none; color: var(--red); cursor: pointer;
+    font-size: 1rem; padding: 0 2px; line-height: 1; }
+  .macro-del:hover { color: #ff6666; }
+
+  /* Status bar */
+  #statusbar {
+    padding: 5px 16px; border-top: 1px solid var(--border);
+    font-size: 0.73rem; color: var(--muted); flex-shrink: 0;
+  }
+
+  /* Input */
+  #chat-input {
+    display: flex; gap: 8px; padding: 12px 16px;
+    border-top: 1px solid var(--border); flex-shrink: 0;
+  }
+  #msg-input {
+    flex: 1; background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); padding: 9px 14px; border-radius: 8px;
+    font-size: 0.88rem; outline: none;
+  }
+  #msg-input:focus { border-color: var(--accent); }
+  #send-btn {
+    background: var(--accent); color: #fff; border: none;
+    padding: 9px 18px; border-radius: 8px; cursor: pointer;
+    font-weight: 700; font-size: 0.88rem; flex-shrink: 0;
+  }
+  #send-btn:hover:not(:disabled) { background: var(--accent-hov); }
+  #send-btn:disabled { background: var(--border); cursor: not-allowed; opacity: 0.7; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <span class="logo">RoboVibe</span>
+    <span class="badge">Mistral AI</span>
+    <span class="tagline">Natural language → physical robot actions</span>
+    <div class="header-right">
+      <div id="status-dot"></div>
+      <span id="status-label" style="font-size:0.78rem;color:var(--muted)">Ready</span>
+    </div>
+  </header>
+
+  <main>
+    <div id="viewer">
+      <div id="viewer-hint">🖱 Drag to rotate · Scroll to zoom · Right-drag to pan</div>
+    </div>
+
+    <div id="sidebar">
+      <div id="chat-messages">
+        <div class="msg sys">Simulator ready — try <em>"wave hello"</em> or <em>"grab the blue box"</em></div>
+      </div>
+
+      <!-- Macros / Skills -->
+      <div id="macros-bar">
+        <div id="macros-toggle">
+          <span>⚡ Macros / Skills</span>
+          <span id="macros-arrow">▼</span>
+        </div>
+        <div id="macros-panel">
+          <input id="macro-name" placeholder="Name (e.g. dance)" />
+          <textarea id="macro-steps"
+            placeholder="wave, move_to(0.5, 0.1, 0.3), grab, move_to(0.6,-0.2,0.3), release, reset"
+          ></textarea>
+          <div class="macro-row">
+            <button class="btn-save" onclick="saveMacro()">Save Macro</button>
+          </div>
+          <div id="macros-list"></div>
+        </div>
+      </div>
+
+      <div id="statusbar" id="statusbar">—</div>
+
+      <div id="chat-input">
+        <input id="msg-input" type="text"
+          placeholder="e.g. 'wave hello', 'grab the blue box', 'do the dance'" />
+        <button id="send-btn">Send</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+// ============================================================
+//  Three.js imports (CDN)
+// ============================================================
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ============================================================
+//  Renderer + Scene setup
+// ============================================================
+const viewer = document.getElementById('viewer');
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+viewer.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x070b10);
+scene.fog = new THREE.FogExp2(0x070b10, 0.04);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 30);
+camera.position.set(1.8, 1.4, 1.8);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0.4, 0.2, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 0.4;
+controls.maxDistance = 7;
+controls.maxPolarAngle = Math.PI * 0.9;
+camera.lookAt(controls.target);
+
+// ── Lighting ──────────────────────────────────────────────
+const ambient = new THREE.AmbientLight(0xffffff, 0.25);
+scene.add(ambient);
+
+const keyLight = new THREE.DirectionalLight(0xfff5e0, 2.5);
+keyLight.position.set(3, 4, 2);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.camera.near = 0.5;
+keyLight.shadow.camera.far = 15;
+keyLight.shadow.camera.left = -3;
+keyLight.shadow.camera.right = 3;
+keyLight.shadow.camera.top = 3;
+keyLight.shadow.camera.bottom = -3;
+keyLight.shadow.bias = -0.0005;
+scene.add(keyLight);
+
+const fillLight = new THREE.DirectionalLight(0x4488ff, 0.6);
+fillLight.position.set(-3, 1, -2);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight(0xff8844, 0.4);
+rimLight.position.set(0, 0.5, -4);
+scene.add(rimLight);
+
+// ── Floor ─────────────────────────────────────────────────
+const gridHelper = new THREE.GridHelper(5, 30, 0x1a2030, 0x141c28);
+scene.add(gridHelper);
+
+const floorGeo = new THREE.PlaneGeometry(5, 5);
+const floorMat = new THREE.MeshStandardMaterial({
+  color: 0x080c14, roughness: 0.9, metalness: 0.05,
+});
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// ── Materials ──────────────────────────────────────────────
+const MAT = {
+  link:   new THREE.MeshStandardMaterial({ color: 0x1e2535, metalness: 0.88, roughness: 0.12 }),
+  joint:  new THREE.MeshStandardMaterial({ color: 0xf97316, metalness: 0.65, roughness: 0.25,
+           emissive: 0x1a0800, emissiveIntensity: 0.3 }),
+  ee:     new THREE.MeshStandardMaterial({ color: 0x22c55e, metalness: 0.7, roughness: 0.2,
+           emissive: 0x003300, emissiveIntensity: 0.4 }),
+  box:    new THREE.MeshStandardMaterial({ color: 0x2563eb, metalness: 0.25, roughness: 0.55,
+           emissive: 0x000a1a, emissiveIntensity: 0.2 }),
+  sphere: new THREE.MeshStandardMaterial({ color: 0xdc2626, metalness: 0.3, roughness: 0.45,
+           emissive: 0x1a0000, emissiveIntensity: 0.25 }),
+};
+
+// ── Scene objects ──────────────────────────────────────────
+const blueBox = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), MAT.box);
+blueBox.castShadow = true;
+blueBox.receiveShadow = true;
+scene.add(blueBox);
+
+const redSphere = new THREE.Mesh(new THREE.SphereGeometry(0.04, 24, 24), MAT.sphere);
+redSphere.castShadow = true;
+scene.add(redSphere);
+
+// ── Robot arm group (rebuilt each frame) ──────────────────
+const robotGroup = new THREE.Group();
+scene.add(robotGroup);
+
+// Taper: thicker at base, thinner at tip
+const RADII = [0.065, 0.058, 0.052, 0.046, 0.040, 0.034, 0.026, 0.020];
+
+// PyBullet Z-up → Three.js Y-up  (swap y and z, negate new z)
+function pb(pos) {
+  return new THREE.Vector3(pos[0], pos[2], -pos[1]);
+}
+
+function makeCylinder(A, B, r0, r1, mat) {
+  const dir = new THREE.Vector3().subVectors(B, A);
+  const len = dir.length();
+  if (len < 1e-4) return null;
+  const geo = new THREE.CylinderGeometry(r1, r0, len, 14, 1, false);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true;
+  mesh.position.copy(A).addScaledVector(dir.normalize(), len / 2);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+  return mesh;
+}
+
+function makeJoint(pos, r, mat) {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 14), mat);
+  mesh.castShadow = true;
+  mesh.position.copy(pos);
+  return mesh;
+}
+
+function updateRobot(frameData) {
+  // Clear old arm geometry
+  while (robotGroup.children.length) robotGroup.remove(robotGroup.children[0]);
+
+  const pts = frameData.links.map(pb);
+
+  // Base disk
+  const baseMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.11, 0.13, 0.06, 18),
+    MAT.link
+  );
+  baseMesh.position.copy(pts[0]).add(new THREE.Vector3(0, 0.03, 0));
+  baseMesh.castShadow = true;
+  robotGroup.add(baseMesh);
+
+  // Links (cylinders) + joints (spheres)
+  for (let i = 0; i < pts.length - 1; i++) {
+    const cyl = makeCylinder(pts[i], pts[i + 1], RADII[i], RADII[i + 1], MAT.link);
+    if (cyl) robotGroup.add(cyl);
+
+    const jMat = i === 0 ? MAT.link : MAT.joint;
+    robotGroup.add(makeJoint(pts[i], RADII[i] * 1.25, jMat));
+  }
+
+  // End effector — glowing green tip
+  const eePos = pts[pts.length - 1];
+  const eeCone = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.07, 10), MAT.ee);
+  eeCone.position.copy(eePos);
+  eeCone.castShadow = true;
+  robotGroup.add(eeCone);
+
+  // Update scene objects
+  if (frameData.objects) {
+    if (frameData.objects.blue_box)
+      blueBox.position.copy(pb(frameData.objects.blue_box));
+    if (frameData.objects.target)
+      redSphere.position.copy(pb(frameData.objects.target));
+  }
+}
+
+// ============================================================
+//  Animation playback
+// ============================================================
+let _animFrames = [];
+let _animIdx    = 0;
+let _animTimer  = null;
+
+function playAnimation(frames, fps = 40) {
+  if (_animTimer) clearInterval(_animTimer);
+  _animFrames = frames;
+  _animIdx    = 0;
+  _animTimer  = setInterval(() => {
+    if (_animIdx >= _animFrames.length) {
+      clearInterval(_animTimer);
+      setStatus('Ready');
+      return;
+    }
+    updateRobot(_animFrames[_animIdx++]);
+  }, 1000 / fps);
+}
+
+// ============================================================
+//  Resize + render loop
+// ============================================================
+function resize() {
+  const w = viewer.clientWidth;
+  const h = viewer.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+(function loop() {
+  requestAnimationFrame(loop);
+  controls.update();
+  renderer.render(scene, camera);
+})();
+
+// ============================================================
+//  Load initial pose
+// ============================================================
+fetch('/api/scene')
+  .then(r => r.json())
+  .then(data => updateRobot(data))
+  .catch(console.error);
+
+// ============================================================
+//  Status helpers
+// ============================================================
+const dot   = document.getElementById('status-dot');
+const label = document.getElementById('status-label');
+const statusbar = document.getElementById('statusbar');
+
+function setStatus(text, busy = false) {
+  label.textContent = text;
+  statusbar.textContent = text;
+  dot.className = busy ? 'busy' : '';
+}
+
+// ============================================================
+//  Chat
+// ============================================================
+const chatEl  = document.getElementById('chat-messages');
+const msgInput = document.getElementById('msg-input');
+const sendBtn  = document.getElementById('send-btn');
+
+function addMsg(role, text) {
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.textContent = text;
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return div;
+}
+
+async function sendCommand() {
+  const text = msgInput.value.trim();
+  if (!text || sendBtn.disabled) return;
+
+  msgInput.value = '';
+  sendBtn.disabled = true;
+  setStatus('Thinking…', true);
+
+  addMsg('user', text);
+  const thinking = addMsg('thinking', '● Mistral is planning…');
+
+  try {
+    const res = await fetch('/api/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const data = await res.json();
+
+    chatEl.removeChild(thinking);
+    addMsg('bot', data.response || '(no text response)');
+
+    if (data.frames && data.frames.length > 0) {
+      setStatus(`Animating ${data.frames.length} frames…`, true);
+      playAnimation(data.frames);
+    } else {
+      setStatus('Ready');
+    }
+  } catch (err) {
+    chatEl.removeChild(thinking);
+    addMsg('sys', `Error: ${err.message}`);
+    setStatus('Error');
+  }
+
+  sendBtn.disabled = false;
+  msgInput.focus();
+}
+
+sendBtn.addEventListener('click', sendCommand);
+msgInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCommand(); }
+});
+
+// ============================================================
+//  Macros panel
+// ============================================================
+const macrosToggle = document.getElementById('macros-toggle');
+const macrosPanel  = document.getElementById('macros-panel');
+const macrosArrow  = document.getElementById('macros-arrow');
+
+macrosToggle.addEventListener('click', () => {
+  const open = macrosPanel.style.display === 'block';
+  macrosPanel.style.display = open ? 'none' : 'block';
+  macrosArrow.textContent = open ? '▼' : '▲';
+  if (!open) refreshMacros();
+});
+
+async function refreshMacros() {
+  const res   = await fetch('/api/macros');
+  const data  = await res.json();
+  const list  = document.getElementById('macros-list');
+  list.innerHTML = '';
+  const entries = Object.entries(data);
+  if (entries.length === 0) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:0.78rem">No macros yet.</div>';
+    return;
+  }
+  for (const [name, info] of entries) {
+    const item = document.createElement('div');
+    item.className = 'macro-item';
+    item.innerHTML = `
+      <div>
+        <strong style="color:var(--accent)">${name}</strong><br/>
+        <code>${info.raw || ''}</code>
+      </div>
+      <button class="macro-del" data-name="${name}" title="Delete">×</button>
+    `;
+    list.appendChild(item);
+  }
+  list.querySelectorAll('.macro-del').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await fetch(`/api/macros/${btn.dataset.name}`, { method: 'DELETE' });
+      refreshMacros();
+    });
+  });
+}
+
+window.saveMacro = async function () {
+  const name  = document.getElementById('macro-name').value.trim();
+  const steps = document.getElementById('macro-steps').value.trim();
+  if (!name || !steps) return;
+  await fetch('/api/macros', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, steps }),
+  });
+  document.getElementById('macro-name').value  = '';
+  document.getElementById('macro-steps').value = '';
+  refreshMacros();
+};
+</script>
+</body>
+</html>

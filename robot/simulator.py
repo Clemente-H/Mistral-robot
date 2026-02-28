@@ -19,6 +19,13 @@ class RobotSimulator:
         self.num_joints = 0
         self._recording = False
         self._recorded_frames: list = []
+        self._recording_joints = False
+        self._joint_frames: list = []
+        # Camera state — spherical coords around scene center
+        self.camera_azimuth = 0.0     # degrees, 0 = look from +X side
+        self.camera_elevation = 42.0  # degrees above horizontal
+        self.camera_distance = 1.5    # meters from target
+        self.camera_target = [0.4, 0, 0.2]
 
     def start(self):
         mode = p.DIRECT if self.headless else p.GUI
@@ -132,6 +139,36 @@ class RobotSimulator:
         self._recorded_frames = []
         return frames
 
+    # --- 3D keyframe recording (for Three.js playback) ---
+    def start_recording_joints(self):
+        self._recording_joints = True
+        self._joint_frames = []
+
+    def stop_recording_joints(self) -> list:
+        self._recording_joints = False
+        frames = self._joint_frames
+        self._joint_frames = []
+        return frames
+
+    def get_link_positions(self) -> list:
+        """Return world-space [x,y,z] for base + each link (8 points total)."""
+        positions = [[0.0, 0.0, 0.0]]  # fixed base
+        for i in range(self.num_joints):
+            state = p.getLinkState(self.kuka_id, i)
+            positions.append(list(state[0]))
+        return positions
+
+    def get_objects_state(self) -> dict:
+        """Return world positions of all scene objects."""
+        result = {}
+        for name, body_id in self.objects.items():
+            pos, _ = p.getBasePositionAndOrientation(body_id)
+            result[name] = list(pos)
+        return result
+
+    def _get_3d_frame(self) -> dict:
+        return {"links": self.get_link_positions(), "objects": self.get_objects_state()}
+
     def _step(self, steps: int = 60):
         for i in range(steps):
             p.stepSimulation()
@@ -139,6 +176,8 @@ class RobotSimulator:
                 time.sleep(1.0 / 240.0)
             if self._recording and i % 6 == 0:  # ~1 frame every 6 steps
                 self._recorded_frames.append(self.get_screenshot())
+            if self._recording_joints and i % 4 == 0:  # ~60 fps of 3D data
+                self._joint_frames.append(self._get_3d_frame())
 
     # ------------------------------------------------------------------
     # Scene state
@@ -155,11 +194,29 @@ class RobotSimulator:
             state[name] = list(pos)
         return state
 
+    def set_camera(self, azimuth: float = None, elevation: float = None, distance: float = None):
+        """Update camera spherical coordinates."""
+        if azimuth is not None:
+            self.camera_azimuth = azimuth % 360
+        if elevation is not None:
+            self.camera_elevation = max(-10.0, min(85.0, elevation))
+        if distance is not None:
+            self.camera_distance = max(0.5, min(5.0, distance))
+
     def get_screenshot(self, width: int = 640, height: int = 480) -> np.ndarray:
-        """Render scene from a fixed camera and return RGB array."""
+        """Render scene from camera defined by spherical coords and return RGB array."""
+        az = math.radians(self.camera_azimuth)
+        el = math.radians(self.camera_elevation)
+        d = self.camera_distance
+        tx, ty, tz = self.camera_target
+        eye = [
+            tx + d * math.cos(el) * math.cos(az),
+            ty + d * math.cos(el) * math.sin(az),
+            tz + d * math.sin(el),
+        ]
         view_matrix = p.computeViewMatrix(
-            cameraEyePosition=[1.5, 0, 1.2],
-            cameraTargetPosition=[0.4, 0, 0.2],
+            cameraEyePosition=eye,
+            cameraTargetPosition=self.camera_target,
             cameraUpVector=[0, 0, 1],
         )
         proj_matrix = p.computeProjectionMatrixFOV(

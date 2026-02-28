@@ -5,8 +5,9 @@ Receives a user command + scene description and calls robot actions.
 import json
 from mistralai import Mistral
 from robot.simulator import RobotSimulator
+from agent.macros import load_macros, execute_macro, macros_for_prompt
 
-# Tool definitions sent to Mistral
+# Base tool definitions sent to Mistral
 ROBOT_TOOLS = [
     {
         "type": "function",
@@ -56,9 +57,23 @@ ROBOT_TOOLS = [
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_macro",
+            "description": "Execute a user-defined movement macro (skill) by name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "The macro name to execute"},
+                },
+                "required": ["name"],
+            },
+        },
+    },
 ]
 
-SYSTEM_PROMPT = """You are the controller of a KUKA iiwa robotic arm in a PyBullet simulation.
+BASE_SYSTEM_PROMPT = """You are the controller of a KUKA iiwa robotic arm in a PyBullet simulation.
 You ALWAYS respond by calling one or more tools — never just reply with text unless there is truly nothing physical to do.
 
 Available actions and when to use them:
@@ -67,6 +82,7 @@ Available actions and when to use them:
 - grab(): close gripper after positioning over an object
 - release(): open gripper to drop object
 - reset(): return to home position, "go home", "reset"
+- execute_macro(name): run a user-defined skill/macro
 
 Scene coordinates:
 - Robot base fixed at (0, 0, 0) — it cannot rotate or translate
@@ -85,7 +101,14 @@ class RobotPlanner:
     def __init__(self, api_key: str, sim: RobotSimulator):
         self.client = Mistral(api_key=api_key)
         self.sim = sim
-        self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self.messages = []  # system prompt injected fresh each run (includes macros)
+
+    def _build_system_prompt(self) -> str:
+        macros = load_macros()
+        extra = macros_for_prompt(macros)
+        if extra:
+            return BASE_SYSTEM_PROMPT + "\n\n" + extra
+        return BASE_SYSTEM_PROMPT
 
     def _execute_tool(self, name: str, args: dict) -> str:
         if name == "move_to":
@@ -103,6 +126,9 @@ class RobotPlanner:
         elif name == "wave":
             self.sim.wave()
             return "Waved hello"
+        elif name == "execute_macro":
+            result = execute_macro(args.get("name", ""), self.sim)
+            return result
         return f"Unknown tool: {name}"
 
     def run(self, user_command: str, scene_description: str = "") -> str:
@@ -110,9 +136,18 @@ class RobotPlanner:
         Run one turn of the agent loop.
         Returns the final text response from Mistral.
         """
+        # Rebuild system prompt each turn so new macros are visible
+        system_msg = {"role": "system", "content": self._build_system_prompt()}
+
         content = user_command
         if scene_description:
             content += f"\n\nCurrent scene (from Cosmos Reason2):\n{scene_description}"
+
+        # Keep conversation history but always refresh system prompt
+        if not self.messages:
+            self.messages = [system_msg]
+        else:
+            self.messages[0] = system_msg  # update system in-place
 
         self.messages.append({"role": "user", "content": content})
 
