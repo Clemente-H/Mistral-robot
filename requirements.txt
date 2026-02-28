@@ -1,0 +1,8 @@
+# pybullet via conda-forge: micromamba install -c conda-forge pybullet -n mistral-py312
+mistralai
+openai
+elevenlabs
+gradio
+python-dotenv
+sounddevice
+numpy
