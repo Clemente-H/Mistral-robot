@@ -11,5 +11,14 @@
       {"action": "reset",   "args": []}
     ],
     "raw": "move_to(0.5, 0.1, 0.25), move_to(0.5, 0.1, 0.05), grab, move_to(0.5, 0.1, 0.3), move_to(0.6, -0.2, 0.3), move_to(0.6, -0.2, 0.05), release, reset"
+  },
+  "show_off": {
+    "steps": [
+      {"action": "wave",       "args": []},
+      {"action": "dance",      "args": []},
+      {"action": "helicopter", "args": []},
+      {"action": "salute",     "args": []}
+    ],
+    "raw": "wave, dance, helicopter, salute"
   }
 }
