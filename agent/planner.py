@@ -259,22 +259,26 @@ class RobotPlanner:
             for tc in invalid_calls:
                 print(f"  [planner] ignored malformed tool call: {tc.function.name!r:.60}")
 
-            assistant_msg = {"role": "assistant", "content": msg.content or ""}
             if valid_calls:
-                assistant_msg["tool_calls"] = [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in valid_calls
-                ]
-            self.messages.append(assistant_msg)
-
-            if not valid_calls:
+                assistant_msg = {
+                    "role": "assistant",
+                    "content": msg.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in valid_calls
+                    ],
+                }
+                self.messages.append(assistant_msg)
+            else:
+                if msg.content:
+                    self.messages.append({"role": "assistant", "content": msg.content})
                 return msg.content or "Done."
 
             for tc in valid_calls:
@@ -329,16 +333,20 @@ class RobotPlanner:
                 if tc.function.name not in _VALID_TOOL_NAMES:
                     print(f"  [planner] ignored malformed tool: {tc.function.name!r:.60}")
 
-            assistant_msg = {"role": "assistant", "content": msg.content or ""}
             if valid_calls:
-                assistant_msg["tool_calls"] = [
-                    {"id": tc.id, "type": "function",
-                     "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                    for tc in valid_calls
-                ]
-            self.messages.append(assistant_msg)
-
-            if not valid_calls:
+                assistant_msg = {
+                    "role": "assistant",
+                    "content": msg.content,
+                    "tool_calls": [
+                        {"id": tc.id, "type": "function",
+                         "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                        for tc in valid_calls
+                    ],
+                }
+                self.messages.append(assistant_msg)
+            else:
+                if msg.content:
+                    self.messages.append({"role": "assistant", "content": msg.content})
                 yield "response", {"text": msg.content or "Done."}
                 return
 
