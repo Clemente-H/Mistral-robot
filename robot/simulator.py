@@ -198,9 +198,10 @@ class RobotSimulator:
         self._smooth_reset()
 
     def wave(self):
-        """Wave hello — arm raised high, elbow out sideways (j2 twist), forearm sweeps horizontally."""
-        # Raise arm more vertically (j1=-π/2.2 ≈ 82°), twist elbow sideways (j2=π/2), bend elbow
-        wave_pose = [0, -math.pi / 2.2, math.pi / 2, math.pi / 3, 0, 0, 0]
+        """Wave hello — arm fully vertical, only wrist (j5) swings side-to-side like a metronome."""
+        # Upper arm horizontal forward (j1=-π/2), elbow bent up (j3=-π/2) → forearm vertical
+        # j4=π/2 orients the wrist so j5 oscillates left-right like a metronome
+        wave_pose = [0, -math.pi / 2, 0, -math.pi / 2, math.pi / 2, 0, 0]
         for i, angle in enumerate(wave_pose[:self.num_joints]):
             p.setJointMotorControl2(
                 self.kuka_id, i,
@@ -210,17 +211,26 @@ class RobotSimulator:
             )
         self._step(80)
 
-        # j3 oscillates: with j2 twisted 90°, this sweeps the forearm left-right (classic wave)
-        # Hold j1 and j2 explicitly each step to resist gravity
+        # j5 oscillates side-to-side like a metronome; hold all other joints firm
         for t in range(300):
-            osc = math.pi / 3 + 0.45 * math.sin(t * 0.12)
+            osc = 0.5 * math.sin(t * 0.12)
+            p.setJointMotorControl2(self.kuka_id, 0, p.POSITION_CONTROL,
+                                    targetPosition=0, force=500)
             p.setJointMotorControl2(self.kuka_id, 1, p.POSITION_CONTROL,
-                                    targetPosition=-math.pi / 2.2, force=500)
+                                    targetPosition=-math.pi / 2, force=500)
             p.setJointMotorControl2(self.kuka_id, 2, p.POSITION_CONTROL,
-                                    targetPosition=math.pi / 2, force=500)
+                                    targetPosition=0, force=500)
             p.setJointMotorControl2(self.kuka_id, 3, p.POSITION_CONTROL,
+                                    targetPosition=-math.pi / 2, force=500)
+            p.setJointMotorControl2(self.kuka_id, 4, p.POSITION_CONTROL,
+                                    targetPosition=math.pi / 2, force=500)
+            p.setJointMotorControl2(self.kuka_id, 5, p.POSITION_CONTROL,
                                     targetPosition=osc, force=400)
+            p.setJointMotorControl2(self.kuka_id, 6, p.POSITION_CONTROL,
+                                    targetPosition=0, force=500)
             self._step(1)
+
+        self._smooth_reset()
 
     def dance(self):
         """Choreographed polyrhythm dance — multiple joints at different frequencies."""
