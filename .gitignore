@@ -1,6 +1,6 @@
 *.pyc
 .env
 *.gif
-#PITCH.md
+PITCH.md
 __pycache__/
 *.pyo
