@@ -9,11 +9,14 @@ RoboVibe lets you control a robotic arm in a physics simulation using plain lang
 ## Demo
 
 ```
-"wave hello"                            → arm raises, sweeps side to side
+"wave hello"                            → elbow out sideways, forearm sweeps horizontally
 "dance"                                 → polyrhythm choreography (4 joints, different frequencies)
+"helicopter"                            → forearm roll spins like rotor blades, arm sways
+"salute"                                → military salute with bow finish
 "grab the blue box and place it there"  → IK approach → grip → lift → move → release
-"sweep the workspace"                   → slow arc scan
+"sweep the workspace"                   → slow arc scan left → right → center
 "do my pickup macro"                    → executes user-defined skill by name
+[mic button]  speak in any language     → Voxtral STT → auto-sends as command
 ```
 
 ---
@@ -101,9 +104,11 @@ python server.py
 
 | Command | Tool | What happens |
 |---|---|---|
-| wave | `wave()` | Arm raises vertical, sweeps left-right (sinusoidal joint 0) |
-| dance | `dance()` | 4 joints at different frequencies simultaneously (polyrhythm) |
+| wave | `wave()` | Arm raises, j2 twists elbow sideways, j3 oscillates — classic horizontal wave |
+| dance | `dance()` | 4 joints at different frequencies simultaneously (polyrhythm), bow finale |
 | sweep | `sweep()` | Slow arc scan left → right → center |
+| helicopter | `helicopter()` | Arm extends, forearm roll spins ±2.4 rad rapidly while base sways |
+| salute | `salute()` | Military salute — arm raises to the side, crisp hold, bow finish |
 | grab the box | `move_to` → `grab()` | IK approach + JOINT_FIXED constraint lifts object |
 | push the sphere | `push(x,y,z)` | Approach from behind, push through |
 | go home / reset | `reset()` | Smooth motor-controlled return to home pose |

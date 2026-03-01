@@ -94,6 +94,22 @@ ROBOT_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "helicopter",
+            "description": "Spin the forearm like a helicopter rotor while the arm sways — entertaining whirring motion.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "salute",
+            "description": "Military salute — arm raises to the side with a crisp hold, then lowers with a bow.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "execute_macro",
             "description": "Execute a user-defined movement macro (skill) by name.",
             "parameters": {
@@ -121,6 +137,8 @@ Available actions and when to use them:
 - grab(): close gripper after positioning over an object
 - release(): open gripper to drop object
 - reset(): return to home position, "go home", "reset"
+- helicopter(): "helicopter", "spin", "rotor" — forearm spins like rotor blades, arm sways
+- salute(): "salute", "attention", "yes sir" — crisp military salute with bow finish
 - execute_macro(name): run a user-defined skill/macro
 
 Scene objects and coordinates:
@@ -177,6 +195,12 @@ class RobotPlanner:
         elif name == "push":
             self.sim.push(args["x"], args["y"], args["z"])
             return f"Pushed object at ({args['x']}, {args['y']}, {args['z']})"
+        elif name == "helicopter":
+            self.sim.helicopter()
+            return "Helicopter rotor sequence done"
+        elif name == "salute":
+            self.sim.salute()
+            return "Saluted"
         elif name == "execute_macro":
             result = execute_macro(args.get("name", ""), self.sim)
             return result

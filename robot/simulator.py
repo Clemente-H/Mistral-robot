@@ -158,9 +158,9 @@ class RobotSimulator:
         self._smooth_reset()
 
     def wave(self):
-        """Wave hello — arm raised high, sweeping side to side like greeting someone far away."""
-        # Raise arm almost vertical, slight elbow bend
-        wave_pose = [0, -math.pi / 1.8, 0, math.pi / 10, 0, 0, 0]
+        """Wave hello — elbow out sideways (j2 twist), forearm oscillates up/down = horizontal wave."""
+        # Raise arm, twist upper arm 90° so elbow faces sideways, bend elbow
+        wave_pose = [0, -math.pi / 2.8, math.pi / 2, math.pi / 3, 0, 0, 0]
         for i, angle in enumerate(wave_pose[:self.num_joints]):
             p.setJointMotorControl2(
                 self.kuka_id, i,
@@ -170,14 +170,16 @@ class RobotSimulator:
             )
         self._step(80)
 
-        # Side-to-side sweep: base (joint 0) swings whole arm left-right
-        # + subtle wrist nod (joint 5) for character
-        for t in range(320):
-            sweep = 0.42 * math.sin(t * 0.10)
-            p.setJointMotorControl2(self.kuka_id, 0, p.POSITION_CONTROL,
-                                    targetPosition=sweep, force=300)
-            p.setJointMotorControl2(self.kuka_id, 5, p.POSITION_CONTROL,
-                                    targetPosition=0.18 * math.sin(t * 0.15 + 0.5), force=200)
+        # j3 oscillates: with j2 twisted 90°, this sweeps the forearm left-right (classic wave)
+        # Hold j1 and j2 explicitly each step to resist gravity
+        for t in range(300):
+            osc = math.pi / 3 + 0.38 * math.sin(t * 0.12)
+            p.setJointMotorControl2(self.kuka_id, 1, p.POSITION_CONTROL,
+                                    targetPosition=-math.pi / 2.8, force=500)
+            p.setJointMotorControl2(self.kuka_id, 2, p.POSITION_CONTROL,
+                                    targetPosition=math.pi / 2, force=500)
+            p.setJointMotorControl2(self.kuka_id, 3, p.POSITION_CONTROL,
+                                    targetPosition=osc, force=400)
             self._step(1)
 
     def dance(self):
@@ -229,6 +231,48 @@ class RobotSimulator:
 
         self._reset_arm()
         self._step(60)
+
+    def helicopter(self):
+        """Helicopter rotor — arm extended, forearm roll (j4) sweeps ±150° rapidly."""
+        # Extend arm forward and upward
+        extend_pose = [0, -math.pi / 3, 0, math.pi / 4, 0, math.pi / 6, 0]
+        for i, angle in enumerate(extend_pose[:self.num_joints]):
+            p.setJointMotorControl2(self.kuka_id, i, p.POSITION_CONTROL,
+                                    targetPosition=angle, force=500)
+        self._step(70)
+
+        # j4 (forearm roll) sweeps ±2.4 rad fast — "rotor" effect
+        # j0 also sways slowly so the whole arm drifts left-right like a chopper
+        for t in range(420):
+            p.setJointMotorControl2(self.kuka_id, 0, p.POSITION_CONTROL,
+                                    targetPosition=0.4 * math.sin(t * 0.015), force=200)
+            p.setJointMotorControl2(self.kuka_id, 1, p.POSITION_CONTROL,
+                                    targetPosition=-math.pi / 3, force=400)
+            p.setJointMotorControl2(self.kuka_id, 3, p.POSITION_CONTROL,
+                                    targetPosition=math.pi / 4, force=350)
+            p.setJointMotorControl2(self.kuka_id, 4, p.POSITION_CONTROL,
+                                    targetPosition=2.5 * math.sin(t * 0.18), force=500)
+            self._step(1)
+
+    def salute(self):
+        """Military salute — arm raises to the side, brief hold, then lower."""
+        salute_pose = [0.45, -math.pi / 2.5, 0, math.pi / 2.2, 0, -math.pi / 5, 0]
+        for i, angle in enumerate(salute_pose[:self.num_joints]):
+            p.setJointMotorControl2(self.kuka_id, i, p.POSITION_CONTROL,
+                                    targetPosition=angle, force=500)
+        self._step(90)
+
+        # Crisp hold
+        self._step(60)
+
+        # Slight forward lean (bow-like finish)
+        bow_pose = list(salute_pose)
+        bow_pose[1] = -math.pi / 4
+        for i, angle in enumerate(bow_pose[:self.num_joints]):
+            p.setJointMotorControl2(self.kuka_id, i, p.POSITION_CONTROL,
+                                    targetPosition=angle, force=500)
+        self._step(50)
+        self._smooth_reset()
 
     def push(self, x: float, y: float, z: float):
         """Push the object at (x, y, z) away from the robot along the +X axis."""

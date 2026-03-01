@@ -57,16 +57,16 @@ async def _transcribe_async(client: Mistral, pcm: np.ndarray) -> str:
         for i in range(0, len(audio_bytes), chunk_bytes):
             yield audio_bytes[i:i + chunk_bytes]
 
-    transcript = []
+    final_text = ""
     async for event in client.audio.realtime.transcribe_stream(
         audio_stream=audio_gen(),
         model="voxtral-mini-transcribe-realtime-2602",
         audio_format=AudioFormat(encoding="pcm_s16le", sample_rate=SAMPLE_RATE),
     ):
         if hasattr(event, "text") and event.text:
-            transcript.append(event.text)
+            final_text = event.text  # overwrite — last event is the complete transcript
 
-    return "".join(transcript).strip()
+    return final_text.strip()
 
 
 class VoiceListener:
