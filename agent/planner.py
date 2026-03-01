@@ -152,12 +152,16 @@ class RobotPlanner:
         self.messages.append({"role": "user", "content": content})
 
         # Agentic loop — keep calling until no more tool calls
-        while True:
+        # First call uses "any" to force at least one action.
+        # Subsequent calls use "auto" so the model can choose to stop.
+        max_iterations = 10
+        for iteration in range(max_iterations):
+            tool_choice = "any" if iteration == 0 else "auto"
             response = self.client.chat.complete(
                 model="mistral-small-latest",
                 messages=self.messages,
                 tools=ROBOT_TOOLS,
-                tool_choice="any",
+                tool_choice=tool_choice,
             )
             msg = response.choices[0].message
 
@@ -178,7 +182,7 @@ class RobotPlanner:
             self.messages.append(assistant_msg)
 
             if not msg.tool_calls:
-                return msg.content
+                return msg.content or "Done."
 
             for tc in msg.tool_calls:
                 args = json.loads(tc.function.arguments)
@@ -189,3 +193,5 @@ class RobotPlanner:
                     "tool_call_id": tc.id,
                     "content": result,
                 })
+
+        return "Actions completed."
