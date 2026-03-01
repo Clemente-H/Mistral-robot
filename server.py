@@ -6,6 +6,7 @@ Run: python server.py
      → open http://localhost:7860
 """
 import asyncio
+import json
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -16,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 load_dotenv()
@@ -55,27 +56,6 @@ class MacroRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Sync simulation logic (runs inside ThreadPoolExecutor)
-# ---------------------------------------------------------------------------
-def _run_command_sync(text: str) -> dict:
-    """Execute a user command: Mistral plans → PyBullet executes → return 3D frames."""
-    frame = sim.get_screenshot()
-    scene_desc = perception.describe(frame)
-    if not scene_desc:
-        scene_desc = str(sim.get_scene_state())
-
-    sim.start_recording_joints()
-    response = planner.run(text, scene_description=scene_desc)
-    frames = sim.stop_recording_joints()
-
-    # Always include at least the final pose as one frame
-    if not frames:
-        frames = [sim._get_3d_frame()]
-
-    return {"response": response, "frames": frames}
-
-
-# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 @app.get("/")
@@ -99,11 +79,50 @@ async def get_scene():
 
 @app.post("/api/command")
 async def handle_command(req: CommandRequest):
+    """
+    SSE endpoint — streams each tool execution as it happens.
+    Events: thinking | tool_start | frames | response | error
+    """
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Empty command")
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(executor, _run_command_sync, req.text.strip())
-    return result
+
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def sync_worker():
+        try:
+            frame = sim.get_screenshot()
+            scene_desc = perception.describe(frame) or str(sim.get_scene_state())
+
+            asyncio.run_coroutine_threadsafe(
+                queue.put(json.dumps({"type": "thinking"})), loop
+            ).result()
+
+            for ev_type, ev_data in planner.run_streaming(req.text.strip(), scene_desc):
+                asyncio.run_coroutine_threadsafe(
+                    queue.put(json.dumps({"type": ev_type, "data": ev_data})), loop
+                ).result()
+        except Exception as e:
+            asyncio.run_coroutine_threadsafe(
+                queue.put(json.dumps({"type": "error", "data": {"message": str(e)}})), loop
+            ).result()
+        finally:
+            asyncio.run_coroutine_threadsafe(queue.put(None), loop).result()
+
+    executor.submit(sync_worker)
+
+    async def generate():
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield f"data: {item}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # Macros CRUD

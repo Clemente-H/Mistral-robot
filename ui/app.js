@@ -176,11 +176,13 @@ function updateRobot(frameData) {
 }
 
 // ============================================================
-//  Animation playback — requestAnimationFrame + LERP
+//  Animation — rAF + LERP, streaming-capable
 // ============================================================
-let _animActive = false;
+let _animActive  = false;   // legacy single-shot animation
+let _streamFrames = [];     // live-appended frame buffer
+let _streamActive = false;  // streaming animation loop running
+let _streamDone   = false;  // SSE stream fully received
 
-// Linear interpolation between two link-position arrays
 function lerpVec(a, b, t) {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }
@@ -198,29 +200,41 @@ function interpolateFrame(fA, fB, t) {
   return { links, objects };
 }
 
-function playAnimation(frames, fps = 40) {
-  _animActive = false;           // kill any running animation
-  if (!frames || frames.length === 0) return;
+// Append a new batch of frames and start the streaming loop if not running
+function appendFramesToStream(newFrames) {
+  _streamFrames.push(...newFrames);
+  if (!_streamActive) startStreamPlay();
+}
 
-  const frameDuration = 1000 / fps;
-  let startTime = null;
-  _animActive = true;
+// Continuous rAF loop that reads from _streamFrames as they arrive
+function startStreamPlay() {
+  _streamActive = true;
+  let frameF   = 0;
+  const FPS    = 40;
+  const frameDur = 1000 / FPS;
+  let lastTime = null;
 
   function step(now) {
-    if (!_animActive) return;
-    if (startTime === null) startTime = now;
+    if (!_streamActive) return;
+    if (lastTime !== null) frameF += (now - lastTime) / frameDur;
+    lastTime = now;
 
-    const frameF   = (now - startTime) / frameDuration;
-    const frameIdx = Math.floor(frameF);
+    const idx   = Math.floor(frameF);
+    const avail = _streamFrames.length;
 
-    if (frameIdx >= frames.length - 1) {
-      updateRobot(frames[frames.length - 1]);
-      setStatus('Ready');
-      _animActive = false;
+    if (idx >= avail - 1) {
+      // No next frame yet — hold last pose and wait
+      if (avail > 0) updateRobot(_streamFrames[avail - 1]);
+      if (_streamDone) {
+        _streamActive = false;
+        setStatus('Ready');
+        return;
+      }
+      requestAnimationFrame(step);
       return;
     }
 
-    updateRobot(interpolateFrame(frames[frameIdx], frames[frameIdx + 1], frameF - frameIdx));
+    updateRobot(interpolateFrame(_streamFrames[idx], _streamFrames[idx + 1], frameF - idx));
     requestAnimationFrame(step);
   }
 
@@ -294,31 +308,77 @@ async function sendCommand() {
   addMsg('user', text);
   const thinking = addMsg('thinking', '● Mistral is planning…');
 
+  // Reset streaming state for this command
+  _streamActive = false;
+  _streamFrames = [];
+  _streamDone   = false;
+
   try {
     const res = await fetch('/api/command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
-    const data = await res.json();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    chatEl.removeChild(thinking);
-    addMsg('bot', data.response || '(no text response)');
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
 
-    if (data.frames && data.frames.length > 0) {
-      setStatus(`Animating ${data.frames.length} frames…`, true);
-      playAnimation(data.frames);
-    } else {
-      setStatus('Ready');
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      // Parse complete SSE lines
+      const lines = buf.split('\n');
+      buf = lines.pop();   // keep any incomplete line for next chunk
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const event = JSON.parse(line.slice(6));
+          handleStreamEvent(event, thinking);
+        } catch { /* malformed JSON — skip */ }
+      }
     }
   } catch (err) {
-    chatEl.removeChild(thinking);
+    if (thinking.parentNode) chatEl.removeChild(thinking);
     addMsg('sys', `Error: ${err.message}`);
     setStatus('Error');
+  } finally {
+    _streamDone = true;      // signal animation loop to finish after last frame
+    sendBtn.disabled = false;
+    msgInput.focus();
   }
+}
 
-  sendBtn.disabled = false;
-  msgInput.focus();
+function handleStreamEvent(event, thinkingEl) {
+  switch (event.type) {
+    case 'thinking':
+      setStatus('Mistral planning…', true);
+      break;
+
+    case 'tool_start':
+      if (thinkingEl.parentNode) chatEl.removeChild(thinkingEl);
+      setStatus(`Running: ${event.data.name}…`, true);
+      break;
+
+    case 'frames':
+      appendFramesToStream(event.data.frames);
+      break;
+
+    case 'response':
+      if (thinkingEl.parentNode) chatEl.removeChild(thinkingEl);
+      addMsg('bot', event.data.text || '(no response)');
+      if (!_streamActive) setStatus('Ready');
+      break;
+
+    case 'error':
+      if (thinkingEl.parentNode) chatEl.removeChild(thinkingEl);
+      addMsg('sys', `Error: ${event.data.message}`);
+      setStatus('Error');
+      break;
+  }
 }
 
 sendBtn.addEventListener('click', sendCommand);

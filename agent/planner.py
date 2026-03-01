@@ -8,6 +8,8 @@ from robot.simulator import RobotSimulator
 from agent.macros import load_macros, execute_macro, macros_for_prompt
 
 # Base tool definitions sent to Mistral
+_VALID_TOOL_NAMES: set[str] = set()  # populated after ROBOT_TOOLS is defined
+
 ROBOT_TOOLS = [
     {
         "type": "function",
@@ -104,6 +106,8 @@ ROBOT_TOOLS = [
         },
     },
 ]
+
+_VALID_TOOL_NAMES = {t["function"]["name"] for t in ROBOT_TOOLS}
 
 BASE_SYSTEM_PROMPT = """You are the controller of a KUKA iiwa robotic arm in a PyBullet simulation.
 You ALWAYS respond by calling one or more tools — never just reply with text unless there is truly nothing physical to do.
@@ -213,8 +217,20 @@ class RobotPlanner:
             msg = response.choices[0].message
 
             # Always serialize to dict — never store SDK objects in history
+            # Filter out malformed tool calls (Mistral occasionally puts JSON as the name)
+            valid_calls = [
+                tc for tc in (msg.tool_calls or [])
+                if tc.function.name in _VALID_TOOL_NAMES
+            ]
+            invalid_calls = [
+                tc for tc in (msg.tool_calls or [])
+                if tc.function.name not in _VALID_TOOL_NAMES
+            ]
+            for tc in invalid_calls:
+                print(f"  [planner] ignored malformed tool call: {tc.function.name!r:.60}")
+
             assistant_msg = {"role": "assistant", "content": msg.content}
-            if msg.tool_calls:
+            if valid_calls:
                 assistant_msg["tool_calls"] = [
                     {
                         "id": tc.id,
@@ -224,14 +240,14 @@ class RobotPlanner:
                             "arguments": tc.function.arguments,
                         },
                     }
-                    for tc in msg.tool_calls
+                    for tc in valid_calls
                 ]
             self.messages.append(assistant_msg)
 
-            if not msg.tool_calls:
+            if not valid_calls:
                 return msg.content or "Done."
 
-            for tc in msg.tool_calls:
+            for tc in valid_calls:
                 args = json.loads(tc.function.arguments)
                 result = self._execute_tool(tc.function.name, args)
                 print(f"  [tool] {tc.function.name}({args}) → {result}")
@@ -242,3 +258,77 @@ class RobotPlanner:
                 })
 
         return "Actions completed."
+
+    def run_streaming(self, user_command: str, scene_description: str = ""):
+        """
+        Generator version of run(). Yields (event_type, data) tuples so the
+        server can stream each tool execution to the client in real time.
+
+        Events:
+          ("tool_start", {"name": str, "args": dict})
+          ("frames",     {"tool": str, "frames": list})
+          ("response",   {"text": str})
+        """
+        system_msg = {"role": "system", "content": self._build_system_prompt()}
+        content = user_command
+        if scene_description:
+            content += f"\n\nCurrent scene (from Pixtral):\n{scene_description}"
+
+        if not self.messages:
+            self.messages = [system_msg]
+        else:
+            self.messages[0] = system_msg
+
+        self.messages.append({"role": "user", "content": content})
+
+        for iteration in range(10):
+            tool_choice = "any" if iteration == 0 else "auto"
+            response = self.client.chat.complete(
+                model="mistral-small-latest",
+                messages=self.messages,
+                tools=ROBOT_TOOLS,
+                tool_choice=tool_choice,
+            )
+            msg = response.choices[0].message
+
+            valid_calls = [
+                tc for tc in (msg.tool_calls or [])
+                if tc.function.name in _VALID_TOOL_NAMES
+            ]
+            for tc in (msg.tool_calls or []):
+                if tc.function.name not in _VALID_TOOL_NAMES:
+                    print(f"  [planner] ignored malformed tool: {tc.function.name!r:.60}")
+
+            assistant_msg = {"role": "assistant", "content": msg.content}
+            if valid_calls:
+                assistant_msg["tool_calls"] = [
+                    {"id": tc.id, "type": "function",
+                     "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                    for tc in valid_calls
+                ]
+            self.messages.append(assistant_msg)
+
+            if not valid_calls:
+                yield "response", {"text": msg.content or "Done."}
+                return
+
+            for tc in valid_calls:
+                args = json.loads(tc.function.arguments)
+                yield "tool_start", {"name": tc.function.name, "args": args}
+
+                # Record frames just for this one tool call
+                self.sim.start_recording_joints()
+                result = self._execute_tool(tc.function.name, args)
+                frames = self.sim.stop_recording_joints()
+                if not frames:
+                    frames = [self.sim._get_3d_frame()]
+
+                print(f"  [tool] {tc.function.name}({args}) → {result}")
+                self.messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result,
+                })
+                yield "frames", {"tool": tc.function.name, "frames": frames}
+
+        yield "response", {"text": "Actions completed."}

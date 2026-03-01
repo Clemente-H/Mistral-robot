@@ -26,6 +26,8 @@ class RobotSimulator:
         self.camera_elevation = 42.0  # degrees above horizontal
         self.camera_distance = 1.5    # meters from target
         self.camera_target = [0.4, 0, 0.2]
+        self._held_constraint = None  # PyBullet constraint ID when gripping
+        self._held_object = None      # name of the gripped object
 
     def start(self):
         mode = p.DIRECT if self.headless else p.GUI
@@ -101,11 +103,42 @@ class RobotSimulator:
         self._step(120)
 
     def grab(self):
-        """Simulate gripper close (visual only — KUKA has no gripper in this URDF)."""
+        """Attach nearest object to end-effector via a fixed constraint so it lifts with the arm."""
+        ee_idx = self.num_joints - 1
+        ee_state = p.getLinkState(self.kuka_id, ee_idx)
+        ee_pos = ee_state[0]
+
+        # Find closest scene object within 0.18 m of the end-effector
+        closest_name, closest_id, closest_dist = None, None, 0.18
+        for name, body_id in self.objects.items():
+            obj_pos, _ = p.getBasePositionAndOrientation(body_id)
+            d = math.sqrt(sum((a - b) ** 2 for a, b in zip(ee_pos, obj_pos)))
+            if d < closest_dist:
+                closest_dist = d
+                closest_name, closest_id = name, body_id
+
+        if closest_id is not None and self._held_constraint is None:
+            # parentFramePosition: offset from EE link origin to grip point (slightly below tip)
+            self._held_constraint = p.createConstraint(
+                self.kuka_id, ee_idx,
+                closest_id, -1,
+                p.JOINT_FIXED,
+                jointAxis=[0, 0, 0],
+                parentFramePosition=[0, 0, 0.03],
+                childFramePosition=[0, 0, 0],
+            )
+            p.changeConstraint(self._held_constraint, maxForce=500)
+            self._held_object = closest_name
+            print(f"  [grip] attached {closest_name} (dist={closest_dist:.3f}m)")
+
         self._step(30)
 
     def release(self):
-        """Simulate gripper open."""
+        """Remove grip constraint so the object falls under gravity."""
+        if self._held_constraint is not None:
+            p.removeConstraint(self._held_constraint)
+            self._held_constraint = None
+            self._held_object = None
         self._step(30)
 
     def _smooth_reset(self):
@@ -125,9 +158,9 @@ class RobotSimulator:
         self._smooth_reset()
 
     def wave(self):
-        """Wave hello — sinusoidal wrist oscillation for organic, fluid motion."""
-        # Raise arm to wave position
-        wave_pose = [0, -math.pi / 2.2, 0, math.pi / 5, 0, -math.pi / 6, 0]
+        """Wave hello — arm raised high, sweeping side to side like greeting someone far away."""
+        # Raise arm almost vertical, slight elbow bend
+        wave_pose = [0, -math.pi / 1.8, 0, math.pi / 10, 0, 0, 0]
         for i, angle in enumerate(wave_pose[:self.num_joints]):
             p.setJointMotorControl2(
                 self.kuka_id, i,
@@ -137,17 +170,15 @@ class RobotSimulator:
             )
         self._step(80)
 
-        # Continuous sinusoidal wave: wrist oscillates, elbow breathes slightly
-        wrist = self.num_joints - 1
-        for t in range(300):
-            osc = 0.75 * math.sin(t * 0.10)
-            p.setJointMotorControl2(self.kuka_id, wrist, p.POSITION_CONTROL,
-                                    targetPosition=osc, force=300)
-            p.setJointMotorControl2(self.kuka_id, 4, p.POSITION_CONTROL,
-                                    targetPosition=-math.pi / 6 + osc * 0.18, force=250)
+        # Side-to-side sweep: base (joint 0) swings whole arm left-right
+        # + subtle wrist nod (joint 5) for character
+        for t in range(320):
+            sweep = 0.42 * math.sin(t * 0.10)
+            p.setJointMotorControl2(self.kuka_id, 0, p.POSITION_CONTROL,
+                                    targetPosition=sweep, force=300)
+            p.setJointMotorControl2(self.kuka_id, 5, p.POSITION_CONTROL,
+                                    targetPosition=0.18 * math.sin(t * 0.15 + 0.5), force=200)
             self._step(1)
-
-        self._smooth_reset()
 
     def dance(self):
         """Choreographed polyrhythm dance — multiple joints at different frequencies."""
@@ -180,8 +211,6 @@ class RobotSimulator:
             p.setJointMotorControl2(self.kuka_id, i, p.POSITION_CONTROL,
                                     targetPosition=angle, force=500)
         self._step(90)
-
-        self._smooth_reset()
 
     def sweep(self):
         """Scan the workspace with a slow arc — arm extended, rotating base left to right."""
