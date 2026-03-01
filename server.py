@@ -62,6 +62,20 @@ UI_DIR = Path(__file__).parent / "ui"
 app = FastAPI(title="RoboVibe")
 
 
+async def _hourly_reset():
+    while True:
+        await asyncio.sleep(3600)
+        print("[scheduler] Hourly reset — resetting simulator and conversation history")
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(executor, sim.reset)
+        planner.messages.clear()
+
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(_hourly_reset())
+
+
 # ---------------------------------------------------------------------------
 # Request models
 # ---------------------------------------------------------------------------
