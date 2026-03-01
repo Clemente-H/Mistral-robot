@@ -60,6 +60,38 @@ ROBOT_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "dance",
+            "description": "Perform a choreographed multi-phase dance: raises arm, swings left/right, spins wrist, bows.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sweep",
+            "description": "Scan the workspace with a slow arc — extends arm and rotates base left to right.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "push",
+            "description": "Push an object at the given position away from the robot along the +X axis.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "number", "description": "X coordinate of the object"},
+                    "y": {"type": "number", "description": "Y coordinate of the object"},
+                    "z": {"type": "number", "description": "Z coordinate of the object (height)"},
+                },
+                "required": ["x", "y", "z"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "execute_macro",
             "description": "Execute a user-defined movement macro (skill) by name.",
             "parameters": {
@@ -77,21 +109,27 @@ BASE_SYSTEM_PROMPT = """You are the controller of a KUKA iiwa robotic arm in a P
 You ALWAYS respond by calling one or more tools — never just reply with text unless there is truly nothing physical to do.
 
 Available actions and when to use them:
-- wave(): greetings, "say hi", "hello", "wave"
+- wave(): greetings, "say hi", "hello", "wave" — long dramatic wave sequence
+- dance(): "dance", "show me a dance", "celebrate" — multi-phase choreography
+- sweep(): "scan", "look around", "survey the area" — slow arc scan of workspace
+- push(x,y,z): "push the box", "knock over", "shove" — pushes object away from robot
 - move_to(x,y,z): move end-effector to a position
 - grab(): close gripper after positioning over an object
 - release(): open gripper to drop object
 - reset(): return to home position, "go home", "reset"
 - execute_macro(name): run a user-defined skill/macro
 
-Scene coordinates:
+Scene objects and coordinates:
 - Robot base fixed at (0, 0, 0) — it cannot rotate or translate
 - Reachable workspace: x=[0.2, 0.8], y=[-0.5, 0.5], z=[0.0, 0.8]
 - Blue box (also called "blue cube", "box"): around (0.5, 0.1, 0.05)
-- Red sphere (also called "red ball", "ball", "sphere", "target"): around (0.6, -0.2, 0.04)
+- Red sphere (also called "red ball", "ball", "sphere"): around (0.6, -0.2, 0.04)
+- Yellow cylinder (also called "yellow tube", "cylinder"): around (0.3, 0.4, 0.05)
+- Green cube (also called "green block", "small cube"): around (0.4, -0.38, 0.04)
 
 Grab sequence: move_to(x, y, z+0.2) → move_to(x, y, z) → grab()
 Place sequence: move_to(dest_x, dest_y, z+0.2) → move_to(dest_x, dest_y, z) → release()
+Push: push(x, y, z) — handles the full approach and push automatically
 
 If the command is physically impossible (e.g. "turn around" — the base is fixed),
 briefly explain why and suggest what you CAN do instead. Keep responses short."""
@@ -126,6 +164,15 @@ class RobotPlanner:
         elif name == "wave":
             self.sim.wave()
             return "Waved hello"
+        elif name == "dance":
+            self.sim.dance()
+            return "Performed dance sequence"
+        elif name == "sweep":
+            self.sim.sweep()
+            return "Swept the workspace"
+        elif name == "push":
+            self.sim.push(args["x"], args["y"], args["z"])
+            return f"Pushed object at ({args['x']}, {args['y']}, {args['z']})"
         elif name == "execute_macro":
             result = execute_macro(args.get("name", ""), self.sim)
             return result
@@ -141,7 +188,7 @@ class RobotPlanner:
 
         content = user_command
         if scene_description:
-            content += f"\n\nCurrent scene (from Cosmos Reason2):\n{scene_description}"
+            content += f"\n\nCurrent scene (from Pixtral):\n{scene_description}"
 
         # Keep conversation history but always refresh system prompt
         if not self.messages:

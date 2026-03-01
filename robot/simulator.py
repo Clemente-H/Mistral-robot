@@ -49,25 +49,37 @@ class RobotSimulator:
             p.resetJointState(self.kuka_id, i, angle)
 
     def _spawn_scene_objects(self):
-        # Blue box on the table area
+        # Blue box
         box_col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[0.05, 0.05, 0.05])
         box_vis = p.createVisualShape(p.GEOM_BOX, halfExtents=[0.05, 0.05, 0.05],
                                       rgbaColor=[0.2, 0.4, 1.0, 1.0])
-        box_id = p.createMultiBody(baseMass=0.5,
-                                   baseCollisionShapeIndex=box_col,
-                                   baseVisualShapeIndex=box_vis,
-                                   basePosition=[0.5, 0.1, 0.05])
-        self.objects["blue_box"] = box_id
+        self.objects["blue_box"] = p.createMultiBody(
+            baseMass=0.5, baseCollisionShapeIndex=box_col,
+            baseVisualShapeIndex=box_vis, basePosition=[0.5, 0.1, 0.05])
 
-        # Red sphere (target / table marker)
+        # Red sphere
         sphere_col = p.createCollisionShape(p.GEOM_SPHERE, radius=0.04)
         sphere_vis = p.createVisualShape(p.GEOM_SPHERE, radius=0.04,
                                          rgbaColor=[1.0, 0.2, 0.2, 1.0])
-        sphere_id = p.createMultiBody(baseMass=0,
-                                      baseCollisionShapeIndex=sphere_col,
-                                      baseVisualShapeIndex=sphere_vis,
-                                      basePosition=[0.6, -0.2, 0.04])
-        self.objects["target"] = sphere_id
+        self.objects["red_sphere"] = p.createMultiBody(
+            baseMass=0.3, baseCollisionShapeIndex=sphere_col,
+            baseVisualShapeIndex=sphere_vis, basePosition=[0.6, -0.2, 0.04])
+
+        # Yellow cylinder
+        cyl_col = p.createCollisionShape(p.GEOM_CYLINDER, radius=0.04, height=0.1)
+        cyl_vis = p.createVisualShape(p.GEOM_CYLINDER, radius=0.04, length=0.1,
+                                      rgbaColor=[0.98, 0.82, 0.05, 1.0])
+        self.objects["yellow_cylinder"] = p.createMultiBody(
+            baseMass=0.3, baseCollisionShapeIndex=cyl_col,
+            baseVisualShapeIndex=cyl_vis, basePosition=[0.3, 0.4, 0.05])
+
+        # Green cube
+        cube_col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[0.04, 0.04, 0.04])
+        cube_vis = p.createVisualShape(p.GEOM_BOX, halfExtents=[0.04, 0.04, 0.04],
+                                       rgbaColor=[0.1, 0.8, 0.2, 1.0])
+        self.objects["green_cube"] = p.createMultiBody(
+            baseMass=0.3, baseCollisionShapeIndex=cube_col,
+            baseVisualShapeIndex=cube_vis, basePosition=[0.4, -0.38, 0.04])
 
     # ------------------------------------------------------------------
     # Actions exposed as agent tools
@@ -102,9 +114,9 @@ class RobotSimulator:
         self._step(60)
 
     def wave(self):
-        """Wave hello — raise arm up and oscillate the wrist joint."""
-        # Raise arm to wave position
-        wave_pose = [0, -math.pi / 6, 0, math.pi / 4, 0, -math.pi / 3, 0]
+        """Wave hello — raise arm high and oscillate the wrist with wide amplitude."""
+        # Raise arm to a higher, more extended wave position
+        wave_pose = [0, -math.pi / 2.2, 0, math.pi / 5, 0, -math.pi / 5, 0]
         for i, angle in enumerate(wave_pose[:self.num_joints]):
             p.setJointMotorControl2(
                 self.kuka_id, i,
@@ -112,21 +124,87 @@ class RobotSimulator:
                 targetPosition=angle,
                 force=500,
             )
-        self._step(80)
+        self._step(100)
 
-        # Oscillate last joint (wrist) back and forth 3 times
+        # Oscillate wrist with bigger amplitude and more repetitions
         wrist_joint = self.num_joints - 1
-        for _ in range(5):
-            for target in [math.pi / 4, -math.pi / 4]:
+        for _ in range(8):
+            for target in [math.pi / 2, -math.pi / 2]:
                 p.setJointMotorControl2(
                     self.kuka_id, wrist_joint,
                     controlMode=p.POSITION_CONTROL,
                     targetPosition=target,
                     force=300,
                 )
-                self._step(40)
+                self._step(32)
 
         self._reset_arm()
+        self._step(80)
+
+    def dance(self):
+        """Choreographed multi-phase dance sequence."""
+        # Phase 1: dramatic raise
+        pose1 = [0, -math.pi / 2, 0, math.pi / 6, 0, -math.pi / 4, 0]
+        for i, angle in enumerate(pose1[:self.num_joints]):
+            p.setJointMotorControl2(self.kuka_id, i, p.POSITION_CONTROL,
+                                    targetPosition=angle, force=500)
+        self._step(80)
+
+        # Phase 2: lean left, lean right (base rotation)
+        for base_target in [-math.pi / 2.5, math.pi / 2.5, 0]:
+            p.setJointMotorControl2(self.kuka_id, 0, p.POSITION_CONTROL,
+                                    targetPosition=base_target, force=350)
+            self._step(70)
+
+        # Phase 3: rapid wrist spins (centered)
+        wrist = self.num_joints - 1
+        for _ in range(5):
+            for target in [math.pi / 1.5, -math.pi / 1.5]:
+                p.setJointMotorControl2(self.kuka_id, wrist, p.POSITION_CONTROL,
+                                        targetPosition=target, force=300)
+                self._step(28)
+
+        # Phase 4: elbow pump (joint 3 up/down)
+        for _ in range(4):
+            for target in [math.pi / 3, math.pi * 0.7]:
+                p.setJointMotorControl2(self.kuka_id, 3, p.POSITION_CONTROL,
+                                        targetPosition=target, force=400)
+                self._step(35)
+
+        # Phase 5: bow (arm forward low)
+        bow_pose = [0, math.pi / 8, 0, math.pi / 2, 0, math.pi / 4, 0]
+        for i, angle in enumerate(bow_pose[:self.num_joints]):
+            p.setJointMotorControl2(self.kuka_id, i, p.POSITION_CONTROL,
+                                    targetPosition=angle, force=500)
+        self._step(90)
+
+        self._reset_arm()
+        self._step(80)
+
+    def sweep(self):
+        """Scan the workspace with a slow arc — arm extended, rotating base left to right."""
+        # Extend arm into scanning pose
+        scan_pose = [0, -math.pi / 4, 0, math.pi / 3, 0, -math.pi / 4, 0]
+        for i, angle in enumerate(scan_pose[:self.num_joints]):
+            p.setJointMotorControl2(self.kuka_id, i, p.POSITION_CONTROL,
+                                    targetPosition=angle, force=500)
+        self._step(80)
+
+        # Slow arc: left → right → center
+        for target in [-math.pi / 2.5, math.pi / 2.5, 0]:
+            p.setJointMotorControl2(self.kuka_id, 0, p.POSITION_CONTROL,
+                                    targetPosition=target, force=150)  # slow
+            self._step(110)
+
+        self._reset_arm()
+        self._step(60)
+
+    def push(self, x: float, y: float, z: float):
+        """Push the object at (x, y, z) away from the robot along the +X axis."""
+        approach_x = max(0.2, x - 0.14)
+        self.move_to(approach_x, y, z + 0.06)   # approach above and behind
+        self.move_to(approach_x, y, z + 0.01)   # lower to object height
+        self.move_to(x + 0.20, y, z + 0.01)     # push through — physics handles the rest
         self._step(60)
 
     def start_recording(self):
