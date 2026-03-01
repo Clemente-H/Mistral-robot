@@ -1,3 +1,13 @@
+---
+title: RoboVibe
+emoji: 🤖
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # RoboVibe
 
 > *Natural language → physical robot actions, powered by Mistral AI*

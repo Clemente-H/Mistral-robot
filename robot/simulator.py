@@ -201,7 +201,7 @@ class RobotSimulator:
         """Wave hello — arm fully vertical, only wrist (j5) swings side-to-side like a metronome."""
         # Upper arm horizontal forward (j1=-π/2), elbow bent up (j3=-π/2) → forearm vertical
         # j4=π/2 orients the wrist so j5 oscillates left-right like a metronome
-        wave_pose = [0, -math.pi / 2, 0, -math.pi / 2, math.pi / 2, 0, 0]
+        wave_pose = [0, -math.pi / 2, 0, -math.pi / 2, math.pi / 2, 0, math.pi / 2]
         for i, angle in enumerate(wave_pose[:self.num_joints]):
             p.setJointMotorControl2(
                 self.kuka_id, i,
@@ -227,7 +227,7 @@ class RobotSimulator:
             p.setJointMotorControl2(self.kuka_id, 5, p.POSITION_CONTROL,
                                     targetPosition=osc, force=400)
             p.setJointMotorControl2(self.kuka_id, 6, p.POSITION_CONTROL,
-                                    targetPosition=0, force=500)
+                                    targetPosition=math.pi / 2, force=500)
             self._step(1)
 
         self._smooth_reset()
