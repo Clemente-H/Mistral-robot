@@ -434,7 +434,10 @@ class RobotSimulator:
             width, height, view_matrix, proj_matrix,
             renderer=p.ER_TINY_RENDERER,
         )
-        return np.array(rgb, dtype=np.uint8)[:, :, :3]  # drop alpha
+        rgb_array = np.array(rgb, dtype=np.uint8)
+        if rgb_array.ndim == 1:  # Linux pip build returns flat buffer
+            rgb_array = rgb_array.reshape(height, width, 4)
+        return rgb_array[:, :, :3]  # drop alpha
 
     def stop(self):
         if self.physics_client is not None:
