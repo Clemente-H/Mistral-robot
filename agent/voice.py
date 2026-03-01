@@ -77,5 +77,24 @@ class VoiceListener:
         """Record audio and return transcribed text (blocking)."""
         pcm = record_until_silence()
         text = asyncio.run(_transcribe_async(self.client, pcm))
-        print(f"📝 Transcribed: {text!r}")
+        print(f"Transcribed: {text!r}")
         return text
+
+
+def transcribe_pcm_bytes(api_key: str, pcm_bytes: bytes, sample_rate: int = 16000) -> str:
+    """
+    Transcribe raw PCM16-LE bytes received from the browser.
+    Resamples to SAMPLE_RATE (16 kHz) if the browser ran at a different rate.
+    """
+    pcm = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+
+    if sample_rate != SAMPLE_RATE:
+        # Linear interpolation to target sample rate
+        n = int(len(pcm) * SAMPLE_RATE / sample_rate)
+        xs_old = np.arange(len(pcm))
+        xs_new = np.linspace(0, len(pcm) - 1, n)
+        pcm = np.interp(xs_new, xs_old, pcm)
+
+    pcm_int16 = (np.clip(pcm, -1.0, 1.0) * 32767).astype(np.int16)
+    client = Mistral(api_key=api_key)
+    return asyncio.run(_transcribe_async(client, pcm_int16))

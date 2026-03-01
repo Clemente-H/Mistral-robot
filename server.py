@@ -15,14 +15,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 load_dotenv()
 
 MISTRAL_KEY = os.environ["MISTRAL_API_KEY"]
-NVIDIA_KEY  = os.environ.get("NVIDIA_API_KEY", "")
 
 from robot.simulator import RobotSimulator
 from agent.planner import RobotPlanner
@@ -34,7 +33,7 @@ from agent.macros import add_macro, delete_macro, load_macros
 # ---------------------------------------------------------------------------
 sim        = RobotSimulator(headless=True)
 sim.start()
-perception = ScenePerception(nvidia_key=NVIDIA_KEY, mistral_key=MISTRAL_KEY)
+perception = ScenePerception(mistral_key=MISTRAL_KEY)
 planner    = RobotPlanner(api_key=MISTRAL_KEY, sim=sim)
 executor   = ThreadPoolExecutor(max_workers=1)
 
@@ -87,6 +86,11 @@ async def root():
     return FileResponse(index)
 
 
+@app.get("/app.js")
+async def get_appjs():
+    return FileResponse(UI_DIR / "app.js", media_type="application/javascript")
+
+
 @app.get("/api/scene")
 async def get_scene():
     """Current robot pose — used for initial Three.js render."""
@@ -120,6 +124,22 @@ async def create_macro(req: MacroRequest):
 @app.delete("/api/macros/{name}")
 async def remove_macro(name: str):
     return delete_macro(name)
+
+
+@app.post("/api/voice")
+async def handle_voice(request: Request):
+    """Receive raw PCM16-LE audio from browser, transcribe via Voxtral, return text."""
+    sample_rate = int(request.query_params.get("sample_rate", 16000))
+    body = await request.body()
+    if len(body) < 3200:  # < 0.1 s at 16 kHz
+        raise HTTPException(status_code=400, detail="Audio too short")
+
+    from agent.voice import transcribe_pcm_bytes
+    loop = asyncio.get_event_loop()
+    text = await loop.run_in_executor(
+        executor, lambda: transcribe_pcm_bytes(MISTRAL_KEY, body, sample_rate)
+    )
+    return {"text": text}
 
 
 # ---------------------------------------------------------------------------

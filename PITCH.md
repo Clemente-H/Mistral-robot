@@ -38,7 +38,7 @@ Users can define macros — "remember this sequence as *dance*". The model learn
 **3. The full Mistral stack**
 - `mistral-small` — plans and executes via tool-calling
 - `pixtral-12b` — eyes of the robot, describes the scene
-- `voxtral` (coming) — ears of the robot, understands voice commands
+- `voxtral-mini` — ears of the robot, understands voice commands
 - All on one API key
 
 ---
@@ -61,7 +61,7 @@ Users can define macros — "remember this sequence as *dance*". The model learn
    Steps: move_to(0.5, 0.3, 0.4), move_to(0.5, -0.3, 0.4), move_to(0.5, 0, 0.2), reset
    → "do the patrol" — robot executes the custom sequence
 
-5. (if time) Show voice: speak a command, watch it execute
+5. Show voice: click mic, speak a command, watch it execute
 ```
 
 ---

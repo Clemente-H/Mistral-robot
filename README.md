@@ -2,7 +2,7 @@
 
 > *Natural language → physical robot actions, powered by Mistral AI*
 
-RoboVibe lets you control a robotic arm in a physics simulation using plain language. Type (or speak) a command — Mistral plans the action sequence, PyBullet executes it, and a live 3D viewer shows the result in real time.
+RoboVibe lets you control a robotic arm in a physics simulation using plain language. Type or speak a command — Mistral plans the action sequence, PyBullet executes it, and a live 3D viewer shows the result in real time.
 
 ---
 
@@ -22,18 +22,19 @@ RoboVibe lets you control a robotic arm in a physics simulation using plain lang
 ```
 Browser (Three.js)
   ├─ 3D viewer — OrbitControls, real-time animation from keyframes
-  ├─ Chat panel — text (+ voice coming)
+  ├─ Chat panel — text + voice (mic → Voxtral STT → command)
   └─ Macros panel — define custom movement sequences
 
 FastAPI server
   ├─ POST /api/command  → Mistral plans → PyBullet executes → returns 3D frames
+  ├─ POST /api/voice    → Voxtral transcribes → returns text
   ├─ GET  /api/scene    → current robot pose
   └─ CRUD /api/macros   → user-defined skills
 
 Mistral stack
   ├─ mistral-small-latest  — agentic tool-calling planner
-  ├─ pixtral-12b-2409      — scene perception (VLM, describes what the camera sees)
-  └─ voxtral (coming)      — voice input STT
+  ├─ pixtral-12b-2409      — scene perception (VLM, describes what the robot sees)
+  └─ voxtral-mini          — voice input STT (browser mic)
 
 PyBullet
   └─ KUKA iiwa 7-DOF arm, headless, records link positions every 4 steps
@@ -62,8 +63,7 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 # Edit .env:
-#   MISTRAL_API_KEY=...   (required)
-#   NVIDIA_API_KEY=...    (optional — Cosmos Reason2 perception)
+#   MISTRAL_API_KEY=...   (required — planning, vision, voice)
 ```
 
 ### 3. Run
@@ -77,11 +77,10 @@ python server.py
 
 ## Perception pipeline
 
-Each command triggers a fresh scene description sent to the planner:
+Each command triggers a scene snapshot sent to the planner:
 
-1. **Cosmos Reason2-8B** (NVIDIA NIM) — physics-aware VLM, trained on robot data
-2. **Pixtral-12B** (Mistral) — fallback if Cosmos unavailable
-3. **sim.get_scene_state()** — raw coordinates as last resort
+1. **Pixtral-12B** (Mistral) — VLM describes objects, positions, and reachability
+2. **sim.get_scene_state()** — raw coordinates as fallback
 
 ---
 
@@ -108,9 +107,9 @@ Mistral-robot/
 │   └── simulator.py    PyBullet KUKA wrapper + 3D keyframe recording
 ├── agent/
 │   ├── planner.py      Mistral tool-calling agentic loop
-│   ├── perception.py   Cosmos → Pixtral scene description
+│   ├── perception.py   Pixtral-12B scene description
 │   ├── macros.py       Macro storage, parsing, execution
-│   └── voice.py        Voxtral STT (CLI mode)
+│   └── voice.py        Voxtral STT (CLI + browser)
 ├── ui/
 │   ├── index.html      Three.js web UI
 │   └── app.py          Gradio UI (legacy fallback)
@@ -121,7 +120,6 @@ Mistral-robot/
 
 ## Roadmap
 
-- [ ] Voice input in browser (mic → Voxtral STT → command)
+- [x] Voice input in browser (mic → Voxtral STT → command)
 - [ ] Franka Panda robot (real gripper URDF)
 - [ ] ElevenLabs TTS responses
-- [ ] Cosmos Reason2 access (NVIDIA NIM account)
