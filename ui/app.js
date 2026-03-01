@@ -73,11 +73,11 @@ scene.add(floor);
 
 // ── Materials ──────────────────────────────────────────────
 const MAT = {
-  link:    new THREE.MeshStandardMaterial({ color: 0x6b7280, metalness: 0.75, roughness: 0.25 }),
-  joint:   new THREE.MeshStandardMaterial({ color: 0xf97316, metalness: 0.65, roughness: 0.25,
-            emissive: 0x1a0800, emissiveIntensity: 0.3 }),
-  ee:      new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.6, roughness: 0.2,
-            emissive: 0x111827, emissiveIntensity: 0.1 }),
+  link:    new THREE.MeshStandardMaterial({ color: 0xb0bccf, metalness: 0.7, roughness: 0.25 }),
+  joint:   new THREE.MeshStandardMaterial({ color: 0xcdd5e0, metalness: 0.6, roughness: 0.2,
+            emissive: 0x080c14, emissiveIntensity: 0.05 }),
+  ee:      new THREE.MeshStandardMaterial({ color: 0xf0f4f8, metalness: 0.55, roughness: 0.15,
+            emissive: 0x111827, emissiveIntensity: 0.05 }),
   box:     new THREE.MeshStandardMaterial({ color: 0x2563eb, metalness: 0.25, roughness: 0.55,
             emissive: 0x000a1a, emissiveIntensity: 0.2 }),
   sphere:  new THREE.MeshStandardMaterial({ color: 0xdc2626, metalness: 0.3, roughness: 0.45,
@@ -86,6 +86,12 @@ const MAT = {
             emissive: 0x1a1000, emissiveIntensity: 0.2 }),
   green2:  new THREE.MeshStandardMaterial({ color: 0x16a34a, metalness: 0.2, roughness: 0.5,
             emissive: 0x001a00, emissiveIntensity: 0.2 }),
+  purple:  new THREE.MeshStandardMaterial({ color: 0x9333ea, metalness: 0.25, roughness: 0.5,
+            emissive: 0x0a001a, emissiveIntensity: 0.2 }),
+  cyan:    new THREE.MeshStandardMaterial({ color: 0x06b6d4, metalness: 0.3, roughness: 0.4,
+            emissive: 0x001a1a, emissiveIntensity: 0.2 }),
+  pink:    new THREE.MeshStandardMaterial({ color: 0xec4899, metalness: 0.2, roughness: 0.45,
+            emissive: 0x1a0010, emissiveIntensity: 0.2 }),
 };
 
 // ── Scene objects ──────────────────────────────────────────
@@ -104,6 +110,18 @@ scene.add(yellowCylinder);
 const greenCube = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), MAT.green2);
 greenCube.castShadow = true; greenCube.receiveShadow = true;
 scene.add(greenCube);
+
+const purpleBox = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), MAT.purple);
+purpleBox.castShadow = true; purpleBox.receiveShadow = true;
+scene.add(purpleBox);
+
+const cyanSphere = new THREE.Mesh(new THREE.SphereGeometry(0.04, 24, 24), MAT.cyan);
+cyanSphere.castShadow = true;
+scene.add(cyanSphere);
+
+const pinkCylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.08, 16), MAT.pink);
+pinkCylinder.castShadow = true; pinkCylinder.receiveShadow = true;
+scene.add(pinkCylinder);
 
 // ── Robot arm group (rebuilt each frame) ──────────────────
 const robotGroup = new THREE.Group();
@@ -172,6 +190,12 @@ function updateRobot(frameData) {
       yellowCylinder.position.copy(pb(frameData.objects.yellow_cylinder));
     if (frameData.objects.green_cube)
       greenCube.position.copy(pb(frameData.objects.green_cube));
+    if (frameData.objects.purple_box)
+      purpleBox.position.copy(pb(frameData.objects.purple_box));
+    if (frameData.objects.cyan_sphere)
+      cyanSphere.position.copy(pb(frameData.objects.cyan_sphere));
+    if (frameData.objects.pink_cylinder)
+      pinkCylinder.position.copy(pb(frameData.objects.pink_cylinder));
   }
 }
 

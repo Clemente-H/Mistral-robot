@@ -111,7 +111,12 @@ async def handle_command(req: CommandRequest):
     def sync_worker():
         try:
             frame = sim.get_screenshot()
-            scene_desc = perception.describe(frame) or str(sim.get_scene_state())
+            raw_coords = sim.get_scene_state()
+            pixtral_desc = perception.describe(frame)
+            if pixtral_desc:
+                scene_desc = pixtral_desc + f"\n\nExact coordinates: {raw_coords}"
+            else:
+                scene_desc = f"Exact coordinates: {raw_coords}"
 
             asyncio.run_coroutine_threadsafe(
                 queue.put(json.dumps({"type": "thinking"})), loop

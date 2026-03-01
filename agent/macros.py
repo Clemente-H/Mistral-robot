@@ -110,6 +110,21 @@ def execute_macro(name: str, sim) -> str:
         elif action == "wave":
             sim.wave()
             log.append("wave()")
+        elif action == "dance":
+            sim.dance()
+            log.append("dance()")
+        elif action == "sweep":
+            sim.sweep()
+            log.append("sweep()")
+        elif action == "helicopter":
+            sim.helicopter()
+            log.append("helicopter()")
+        elif action == "salute":
+            sim.salute()
+            log.append("salute()")
+        elif action == "push" and len(args) >= 3:
+            sim.push(args[0], args[1], args[2])
+            log.append(f"push({args[0]}, {args[1]}, {args[2]})")
         else:
             log.append(f"[skipped unknown: {action}]")
 

@@ -83,15 +83,55 @@ class RobotSimulator:
             baseMass=0.3, baseCollisionShapeIndex=cube_col,
             baseVisualShapeIndex=cube_vis, basePosition=[0.4, -0.38, 0.04])
 
+        # Purple box
+        purp_col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[0.04, 0.04, 0.04])
+        purp_vis = p.createVisualShape(p.GEOM_BOX, halfExtents=[0.04, 0.04, 0.04],
+                                       rgbaColor=[0.6, 0.15, 0.9, 1.0])
+        self.objects["purple_box"] = p.createMultiBody(
+            baseMass=0.3, baseCollisionShapeIndex=purp_col,
+            baseVisualShapeIndex=purp_vis, basePosition=[0.7, 0.25, 0.04])
+
+        # Cyan sphere
+        cyan_col = p.createCollisionShape(p.GEOM_SPHERE, radius=0.04)
+        cyan_vis = p.createVisualShape(p.GEOM_SPHERE, radius=0.04,
+                                       rgbaColor=[0.0, 0.85, 0.85, 1.0])
+        self.objects["cyan_sphere"] = p.createMultiBody(
+            baseMass=0.3, baseCollisionShapeIndex=cyan_col,
+            baseVisualShapeIndex=cyan_vis, basePosition=[0.22, 0.05, 0.04])
+
+        # Pink cylinder
+        pink_col = p.createCollisionShape(p.GEOM_CYLINDER, radius=0.035, height=0.08)
+        pink_vis = p.createVisualShape(p.GEOM_CYLINDER, radius=0.035, length=0.08,
+                                       rgbaColor=[1.0, 0.35, 0.65, 1.0])
+        self.objects["pink_cylinder"] = p.createMultiBody(
+            baseMass=0.3, baseCollisionShapeIndex=pink_col,
+            baseVisualShapeIndex=pink_vis, basePosition=[0.72, -0.35, 0.04])
+
     # ------------------------------------------------------------------
     # Actions exposed as agent tools
     # ------------------------------------------------------------------
 
+    # KUKA iiwa joint limits (radians) — used to bias IK toward natural posture
+    _IK_LL = [-2.967, -2.094, -2.967, -2.094, -2.967, -2.094, -3.054]
+    _IK_UL = [ 2.967,  2.094,  2.967,  2.094,  2.967,  2.094,  3.054]
+    _IK_JR = [ 5.934,  4.188,  5.934,  4.188,  5.934,  4.188,  6.108]
+    _IK_RP = [0, -math.pi / 4, 0, math.pi / 2, 0, -math.pi / 4, 0]  # home pose
+
     def move_to(self, x: float, y: float, z: float):
-        """Move end-effector to (x, y, z) in world coordinates."""
+        """Move end-effector to (x, y, z) in world coordinates.
+        Uses restPoses + joint limits so IK always prefers the natural elbow-up posture.
+        """
         end_effector_idx = self.num_joints - 1
+        # EE pointing straight down — natural pick-and-place orientation
+        target_orn = p.getQuaternionFromEuler([0, math.pi, 0])
         joint_poses = p.calculateInverseKinematics(
-            self.kuka_id, end_effector_idx, [x, y, z]
+            self.kuka_id, end_effector_idx,
+            targetPosition=[x, y, z],
+            targetOrientation=target_orn,
+            lowerLimits=self._IK_LL,
+            upperLimits=self._IK_UL,
+            jointRanges=self._IK_JR,
+            restPoses=self._IK_RP,
         )
         for i, pos in enumerate(joint_poses[:self.num_joints]):
             p.setJointMotorControl2(
@@ -158,9 +198,9 @@ class RobotSimulator:
         self._smooth_reset()
 
     def wave(self):
-        """Wave hello — elbow out sideways (j2 twist), forearm oscillates up/down = horizontal wave."""
-        # Raise arm, twist upper arm 90° so elbow faces sideways, bend elbow
-        wave_pose = [0, -math.pi / 2.8, math.pi / 2, math.pi / 3, 0, 0, 0]
+        """Wave hello — arm raised high, elbow out sideways (j2 twist), forearm sweeps horizontally."""
+        # Raise arm more vertically (j1=-π/2.2 ≈ 82°), twist elbow sideways (j2=π/2), bend elbow
+        wave_pose = [0, -math.pi / 2.2, math.pi / 2, math.pi / 3, 0, 0, 0]
         for i, angle in enumerate(wave_pose[:self.num_joints]):
             p.setJointMotorControl2(
                 self.kuka_id, i,
@@ -173,9 +213,9 @@ class RobotSimulator:
         # j3 oscillates: with j2 twisted 90°, this sweeps the forearm left-right (classic wave)
         # Hold j1 and j2 explicitly each step to resist gravity
         for t in range(300):
-            osc = math.pi / 3 + 0.38 * math.sin(t * 0.12)
+            osc = math.pi / 3 + 0.45 * math.sin(t * 0.12)
             p.setJointMotorControl2(self.kuka_id, 1, p.POSITION_CONTROL,
-                                    targetPosition=-math.pi / 2.8, force=500)
+                                    targetPosition=-math.pi / 2.2, force=500)
             p.setJointMotorControl2(self.kuka_id, 2, p.POSITION_CONTROL,
                                     targetPosition=math.pi / 2, force=500)
             p.setJointMotorControl2(self.kuka_id, 3, p.POSITION_CONTROL,
@@ -233,26 +273,31 @@ class RobotSimulator:
         self._step(60)
 
     def helicopter(self):
-        """Helicopter rotor — arm extended, forearm roll (j4) sweeps ±150° rapidly."""
-        # Extend arm forward and upward
-        extend_pose = [0, -math.pi / 3, 0, math.pi / 4, 0, math.pi / 6, 0]
+        """Helicopter — arm extended horizontally, j0 (base) spins via VELOCITY_CONTROL."""
+        # Extend arm outward (near-horizontal) so the whole arm sweeps like a rotor blade
+        extend_pose = [0, -math.pi / 5, 0, math.pi / 4, 0, math.pi / 5, 0]
         for i, angle in enumerate(extend_pose[:self.num_joints]):
             p.setJointMotorControl2(self.kuka_id, i, p.POSITION_CONTROL,
                                     targetPosition=angle, force=500)
         self._step(70)
 
-        # j4 (forearm roll) sweeps ±2.4 rad fast — "rotor" effect
-        # j0 also sways slowly so the whole arm drifts left-right like a chopper
-        for t in range(420):
-            p.setJointMotorControl2(self.kuka_id, 0, p.POSITION_CONTROL,
-                                    targetPosition=0.4 * math.sin(t * 0.015), force=200)
+        # Spin base (j0) with velocity control — hits ±170° limits and bounces,
+        # but visually reads as continuous rotation
+        p.setJointMotorControl2(self.kuka_id, 0, p.VELOCITY_CONTROL,
+                                targetVelocity=5.0, force=800)
+        for t in range(480):
+            # Hold arm extension while base spins
             p.setJointMotorControl2(self.kuka_id, 1, p.POSITION_CONTROL,
-                                    targetPosition=-math.pi / 3, force=400)
+                                    targetPosition=-math.pi / 5, force=450)
             p.setJointMotorControl2(self.kuka_id, 3, p.POSITION_CONTROL,
-                                    targetPosition=math.pi / 4, force=350)
-            p.setJointMotorControl2(self.kuka_id, 4, p.POSITION_CONTROL,
-                                    targetPosition=2.5 * math.sin(t * 0.18), force=500)
+                                    targetPosition=math.pi / 4, force=400)
             self._step(1)
+
+        # Stop spin
+        p.setJointMotorControl2(self.kuka_id, 0, p.VELOCITY_CONTROL,
+                                targetVelocity=0, force=800)
+        self._step(20)
+        self._smooth_reset()
 
     def salute(self):
         """Military salute — arm raises to the side, brief hold, then lower."""

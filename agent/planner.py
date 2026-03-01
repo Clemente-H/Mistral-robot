@@ -145,9 +145,15 @@ Scene objects and coordinates:
 - Robot base fixed at (0, 0, 0) — it cannot rotate or translate
 - Reachable workspace: x=[0.2, 0.8], y=[-0.5, 0.5], z=[0.0, 0.8]
 - Blue box (also called "blue cube", "box"): around (0.5, 0.1, 0.05)
-- Red sphere (also called "red ball", "ball", "sphere"): around (0.6, -0.2, 0.04)
-- Yellow cylinder (also called "yellow tube", "cylinder"): around (0.3, 0.4, 0.05)
-- Green cube (also called "green block", "small cube"): around (0.4, -0.38, 0.04)
+- Red sphere (also called "red ball", "ball"): around (0.6, -0.2, 0.04)
+- Yellow cylinder (also called "yellow tube"): around (0.3, 0.4, 0.05)
+- Green cube (also called "green block"): around (0.4, -0.38, 0.04)
+- Purple box (also called "purple cube", "purple"): around (0.7, 0.25, 0.04)
+- Cyan sphere (also called "cyan ball", "teal"): around (0.22, 0.05, 0.04)
+- Pink cylinder (also called "pink tube", "pink"): around (0.72, -0.35, 0.04)
+
+The current scene (exact coordinates) will be provided with each command — use those coordinates.
+When placing "next to" or "near" an object, offset ~0.15 m in x or y from that object's position.
 
 Grab sequence: move_to(x, y, z+0.2) → move_to(x, y, z) → grab()
 Place sequence: move_to(dest_x, dest_y, z+0.2) → move_to(dest_x, dest_y, z) → release()
@@ -253,7 +259,7 @@ class RobotPlanner:
             for tc in invalid_calls:
                 print(f"  [planner] ignored malformed tool call: {tc.function.name!r:.60}")
 
-            assistant_msg = {"role": "assistant", "content": msg.content}
+            assistant_msg = {"role": "assistant", "content": msg.content or ""}
             if valid_calls:
                 assistant_msg["tool_calls"] = [
                     {
@@ -323,7 +329,7 @@ class RobotPlanner:
                 if tc.function.name not in _VALID_TOOL_NAMES:
                     print(f"  [planner] ignored malformed tool: {tc.function.name!r:.60}")
 
-            assistant_msg = {"role": "assistant", "content": msg.content}
+            assistant_msg = {"role": "assistant", "content": msg.content or ""}
             if valid_calls:
                 assistant_msg["tool_calls"] = [
                     {"id": tc.id, "type": "function",
