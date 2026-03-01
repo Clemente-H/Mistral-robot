@@ -12,6 +12,8 @@ pinned: false
 
 > *Natural language → physical robot actions, powered by Mistral AI*
 
+**Live demo:** https://mistral-robot-production.up.railway.app
+
 RoboVibe lets you control a robotic arm in a physics simulation using plain language. Type or speak a command — Mistral plans the action sequence, PyBullet executes it, and a live 3D viewer animates the result in real time as each action streams back.
 
 ---
