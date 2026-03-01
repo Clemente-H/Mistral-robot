@@ -9,10 +9,29 @@ import asyncio
 import json
 import os
 import sys
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+
+# ---------------------------------------------------------------------------
+# Debug log capture — keeps last 400 lines in memory, exposed at /api/logs
+# ---------------------------------------------------------------------------
+_LOG_BUFFER: deque = deque(maxlen=400)
+
+class _LogCapture:
+    def __init__(self, orig): self._orig = orig
+    def write(self, data):
+        self._orig.write(data)
+        stripped = data.rstrip()
+        if stripped:
+            _LOG_BUFFER.append(stripped)
+    def flush(self): self._orig.flush()
+    def isatty(self): return False
+
+sys.stdout = _LogCapture(sys.stdout)
+sys.stderr = _LogCapture(sys.stderr)
 
 import uvicorn
 from dotenv import load_dotenv
@@ -123,6 +142,20 @@ async def handle_command(req: CommandRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# Debug logs
+@app.get("/api/logs")
+async def get_logs(n: int = 100):
+    """Return last N captured log lines. Use /api/logs?n=200 for more."""
+    lines = list(_LOG_BUFFER)
+    return {"lines": lines[-n:], "total": len(lines)}
+
+
+@app.delete("/api/logs")
+async def clear_logs():
+    _LOG_BUFFER.clear()
+    return {"cleared": True}
 
 
 # Macros CRUD
