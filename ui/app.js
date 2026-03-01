@@ -136,6 +136,8 @@ function makeJoint(pos, r, mat) {
 }
 
 function updateRobot(frameData) {
+  // Dispose geometries before clearing to avoid GPU memory leaks on long animations
+  robotGroup.children.forEach(child => { if (child.geometry) child.geometry.dispose(); });
   while (robotGroup.children.length) robotGroup.remove(robotGroup.children[0]);
 
   const pts = frameData.links.map(pb);
@@ -174,24 +176,55 @@ function updateRobot(frameData) {
 }
 
 // ============================================================
-//  Animation playback
+//  Animation playback — requestAnimationFrame + LERP
 // ============================================================
-let _animFrames = [];
-let _animIdx    = 0;
-let _animTimer  = null;
+let _animActive = false;
+
+// Linear interpolation between two link-position arrays
+function lerpVec(a, b, t) {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+function interpolateFrame(fA, fB, t) {
+  const links = fA.links.map((posA, i) => lerpVec(posA, fB.links[i], t));
+  const objects = {};
+  if (fA.objects) {
+    for (const key of Object.keys(fA.objects)) {
+      objects[key] = fB.objects && fB.objects[key]
+        ? lerpVec(fA.objects[key], fB.objects[key], t)
+        : fA.objects[key];
+    }
+  }
+  return { links, objects };
+}
 
 function playAnimation(frames, fps = 40) {
-  if (_animTimer) clearInterval(_animTimer);
-  _animFrames = frames;
-  _animIdx    = 0;
-  _animTimer  = setInterval(() => {
-    if (_animIdx >= _animFrames.length) {
-      clearInterval(_animTimer);
+  _animActive = false;           // kill any running animation
+  if (!frames || frames.length === 0) return;
+
+  const frameDuration = 1000 / fps;
+  let startTime = null;
+  _animActive = true;
+
+  function step(now) {
+    if (!_animActive) return;
+    if (startTime === null) startTime = now;
+
+    const frameF   = (now - startTime) / frameDuration;
+    const frameIdx = Math.floor(frameF);
+
+    if (frameIdx >= frames.length - 1) {
+      updateRobot(frames[frames.length - 1]);
       setStatus('Ready');
+      _animActive = false;
       return;
     }
-    updateRobot(_animFrames[_animIdx++]);
-  }, 1000 / fps);
+
+    updateRobot(interpolateFrame(frames[frameIdx], frames[frameIdx + 1], frameF - frameIdx));
+    requestAnimationFrame(step);
+  }
+
+  requestAnimationFrame(step);
 }
 
 // ============================================================

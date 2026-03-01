@@ -108,15 +108,26 @@ class RobotSimulator:
         """Simulate gripper open."""
         self._step(30)
 
+    def _smooth_reset(self):
+        """Return to home using motor control so the motion is animated."""
+        home = [0, -math.pi / 4, 0, math.pi / 2, 0, -math.pi / 4, 0]
+        for i, angle in enumerate(home[:self.num_joints]):
+            p.setJointMotorControl2(
+                self.kuka_id, i,
+                controlMode=p.POSITION_CONTROL,
+                targetPosition=angle,
+                force=300,
+            )
+        self._step(100)
+
     def reset(self):
-        """Return arm to home position."""
-        self._reset_arm()
-        self._step(60)
+        """Return arm to home position smoothly."""
+        self._smooth_reset()
 
     def wave(self):
-        """Wave hello — raise arm high and oscillate the wrist with wide amplitude."""
-        # Raise arm to a higher, more extended wave position
-        wave_pose = [0, -math.pi / 2.2, 0, math.pi / 5, 0, -math.pi / 5, 0]
+        """Wave hello — sinusoidal wrist oscillation for organic, fluid motion."""
+        # Raise arm to wave position
+        wave_pose = [0, -math.pi / 2.2, 0, math.pi / 5, 0, -math.pi / 6, 0]
         for i, angle in enumerate(wave_pose[:self.num_joints]):
             p.setJointMotorControl2(
                 self.kuka_id, i,
@@ -124,62 +135,53 @@ class RobotSimulator:
                 targetPosition=angle,
                 force=500,
             )
-        self._step(100)
-
-        # Oscillate wrist with bigger amplitude and more repetitions
-        wrist_joint = self.num_joints - 1
-        for _ in range(8):
-            for target in [math.pi / 2, -math.pi / 2]:
-                p.setJointMotorControl2(
-                    self.kuka_id, wrist_joint,
-                    controlMode=p.POSITION_CONTROL,
-                    targetPosition=target,
-                    force=300,
-                )
-                self._step(32)
-
-        self._reset_arm()
         self._step(80)
 
+        # Continuous sinusoidal wave: wrist oscillates, elbow breathes slightly
+        wrist = self.num_joints - 1
+        for t in range(300):
+            osc = 0.75 * math.sin(t * 0.10)
+            p.setJointMotorControl2(self.kuka_id, wrist, p.POSITION_CONTROL,
+                                    targetPosition=osc, force=300)
+            p.setJointMotorControl2(self.kuka_id, 4, p.POSITION_CONTROL,
+                                    targetPosition=-math.pi / 6 + osc * 0.18, force=250)
+            self._step(1)
+
+        self._smooth_reset()
+
     def dance(self):
-        """Choreographed multi-phase dance sequence."""
-        # Phase 1: dramatic raise
-        pose1 = [0, -math.pi / 2, 0, math.pi / 6, 0, -math.pi / 4, 0]
+        """Choreographed polyrhythm dance — multiple joints at different frequencies."""
+        # Start pose
+        pose1 = [0, -math.pi / 3, 0, math.pi / 4, 0, -math.pi / 6, 0]
         for i, angle in enumerate(pose1[:self.num_joints]):
             p.setJointMotorControl2(self.kuka_id, i, p.POSITION_CONTROL,
                                     targetPosition=angle, force=500)
-        self._step(80)
+        self._step(60)
 
-        # Phase 2: lean left, lean right (base rotation)
-        for base_target in [-math.pi / 2.5, math.pi / 2.5, 0]:
+        # Polyrhythm: 4 joints moving at different frequencies simultaneously
+        for t in range(450):
+            # Base sways slowly
             p.setJointMotorControl2(self.kuka_id, 0, p.POSITION_CONTROL,
-                                    targetPosition=base_target, force=350)
-            self._step(70)
+                                    targetPosition=0.5 * math.sin(t * 0.02), force=350)
+            # Shoulder bobs at a different rhythm
+            p.setJointMotorControl2(self.kuka_id, 1, p.POSITION_CONTROL,
+                                    targetPosition=-math.pi / 3 + 0.18 * math.sin(t * 0.03 + 1.0), force=400)
+            # Elbow pumps faster
+            p.setJointMotorControl2(self.kuka_id, 3, p.POSITION_CONTROL,
+                                    targetPosition=math.pi / 3 + 0.3 * math.cos(t * 0.05), force=400)
+            # Wrist spins fastest (sinusoidal — never hits limits)
+            p.setJointMotorControl2(self.kuka_id, 6, p.POSITION_CONTROL,
+                                    targetPosition=0.9 * math.sin(t * 0.08), force=300)
+            self._step(1)
 
-        # Phase 3: rapid wrist spins (centered)
-        wrist = self.num_joints - 1
-        for _ in range(5):
-            for target in [math.pi / 1.5, -math.pi / 1.5]:
-                p.setJointMotorControl2(self.kuka_id, wrist, p.POSITION_CONTROL,
-                                        targetPosition=target, force=300)
-                self._step(28)
-
-        # Phase 4: elbow pump (joint 3 up/down)
-        for _ in range(4):
-            for target in [math.pi / 3, math.pi * 0.7]:
-                p.setJointMotorControl2(self.kuka_id, 3, p.POSITION_CONTROL,
-                                        targetPosition=target, force=400)
-                self._step(35)
-
-        # Phase 5: bow (arm forward low)
+        # Bow finale
         bow_pose = [0, math.pi / 8, 0, math.pi / 2, 0, math.pi / 4, 0]
         for i, angle in enumerate(bow_pose[:self.num_joints]):
             p.setJointMotorControl2(self.kuka_id, i, p.POSITION_CONTROL,
                                     targetPosition=angle, force=500)
         self._step(90)
 
-        self._reset_arm()
-        self._step(80)
+        self._smooth_reset()
 
     def sweep(self):
         """Scan the workspace with a slow arc — arm extended, rotating base left to right."""
