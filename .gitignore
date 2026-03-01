@@ -1,3 +1,6 @@
 *.pyc
 .env
 *.gif
+PITCH.md
+__pycache__/
+*.pyo
